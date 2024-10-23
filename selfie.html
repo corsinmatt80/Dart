@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Selfie aufnehmen</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            text-align: center;
+            padding: 50px;
+        }
+        h1 {
+            color: #333;
+        }
+        #video {
+            width: 300px;
+            height: 225px;
+            border: 1px solid #ccc;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #ff0000;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Hallo <span id="playerName"></span>, mach ein Selfie!</h1>
+    
+    <video id="video" autoplay></video>
+    <br><br>
+    <button id="snapButton">Selfie machen</button>
+    <br><br>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        // Lade den Namen aus dem localStorage und zeige ihn an
+        document.getElementById("playerName").textContent = localStorage.getItem("playerName");
+
+        // Kamera streamen
+        var video = document.getElementById('video');
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: true }).then(function(stream) {
+                video.srcObject = stream;
+                video.play();
+            });
+        }
+
+        // Selfie machen und im Canvas speichern
+        document.getElementById("snapButton").addEventListener("click", function() {
+            var canvas = document.getElementById("canvas");
+            var context = canvas.getContext("2d");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.style.display = "block";
+
+            // Optional: Hier kannst du das Bild als Datei speichern oder weiterverarbeiten
+            var dataURL = canvas.toDataURL("image/png");
+            console.log(dataURL); // Das Bild als DataURL
+        });
+    </script>
+
+</body>
+</html>

@@ -2,7 +2,7 @@ import qrcode
 from PIL import Image
 
 # Die URL deiner GitHub Pages-Seite
-data = "https://corsinmatt80.github.io/Dart/"
+data = "https://corsinmatt80.github.io/Dart/nameneingabe.html"
 
 # QR-Code-Objekt erstellen
 qr = qrcode.QRCode(
