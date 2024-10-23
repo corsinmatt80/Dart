@@ -1,8 +1,8 @@
 import qrcode
 from PIL import Image
 
-# Die Daten, die im QR-Code enthalten sein sollen
-data = "Hello, this is a QR code example!"
+# Die URL deiner GitHub Pages-Seite
+data = "https://corsinmatt80.github.io/Dart/"
 
 # QR-Code-Objekt erstellen
 qr = qrcode.QRCode(
@@ -12,7 +12,7 @@ qr = qrcode.QRCode(
     border=4,  # Breite des Rahmens
 )
 
-# Daten zum QR-Code hinzufügen
+# Daten (URL) zum QR-Code hinzufügen
 qr.add_data(data)
 qr.make(fit=True)
 
@@ -22,5 +22,4 @@ img = qr.make_image(fill='black', back_color='white')
 # QR-Code-Bild anzeigen
 img.show()
 
-# Optional: QR-Code-Bild speichern
-# img.save("qrcode_example.png")
+
