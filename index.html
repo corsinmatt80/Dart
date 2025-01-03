@@ -1,34 +1,43 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meine GitHub Pages Seite</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
-            text-align: center;
-            padding: 50px;
-        }
-        h1 {
-            color: #333;
-        }
-        p {
-            color: #666;
-        }
-        a {
-            color: #007bff;
-            text-decoration: none;
-        }
-    </style>
+    <title>Killer Darts Game</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script src="assets/js/script.js" defer></script>
 </head>
 <body>
-    <h1>Willkommen auf meiner GitHub Pages Seite!</h1>
-    <p>Dies ist eine einfache HTML-Seite, die auf GitHub Pages gehostet wird.</p>
-    <p>
-        Mehr über mich auf <a href="https://github.com/dein-username" target="_blank">meinem GitHub-Profil</a>.
-    </p>
-    <a href="https://corsinmatt80.github.io/Dart/KillerView.html" target="_blank">meinem GitHub-Profil</a>
+    <div id="name-entry">
+        <h1>Enter Player Names</h1>
+        <p>Enter up to 10 names and click "Start Game".</p>
+        <ul id="name-list">
+            <!-- Dynamic input fields for names -->
+        </ul>
+        <button onclick="addNameField()">Add Name</button>
+        <button onclick="startGame()">Start Game</button>
+    </div>
+
+    <div id="assign-numbers" style="display: none;">
+        <h1>Assigned Numbers</h1>
+        <ul id="player-numbers">
+            <!-- Dynamic list of players and assigned numbers -->
+        </ul>
+        <button onclick="startGamePlay()">Proceed to Game</button>
+    </div>
+
+    <div id="game-play" style="display: none;">
+        <h1>Killer Darts Game</h1>
+        <p><strong>Players:</strong></p>
+        <ul id="game-status"></ul>
+        <p>
+            Enter Player Name and Target Number:
+            <input type="text" id="player-name" placeholder="Player Name">
+            <input type="number" id="target-number" placeholder="Target Number" min="1" max="20">
+        </p>
+        <button onclick="hitTarget()">Hit Target</button>
+        <h3>Eliminated Players:</h3>
+        <ul id="eliminated-list"></ul>
+    </div>
 </body>
 </html>
