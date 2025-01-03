@@ -9,7 +9,7 @@ function addNameField() {
     list.appendChild(li);
 }
 
-function redirectToGame() {
+function redirectToKillerGame() {
     const inputs = document.querySelectorAll("#name-list input");
     const players = Array.from(inputs)
         .map(input => input.value.trim())
@@ -26,3 +26,22 @@ function redirectToGame() {
     // Redirect to game page
     window.location.href = "killer.html";
 }
+
+function redirectToNormalGame() {
+    const inputs = document.querySelectorAll("#name-list input");
+    const players = Array.from(inputs)
+        .map(input => input.value.trim())
+        .filter(name => name);
+
+    if (players.length < 2) {
+        alert("You need at least 2 players to start.");
+        return;
+    }
+
+    // Save player names to localStorage
+    localStorage.setItem("players", JSON.stringify(players));
+
+    // Redirect to game page
+    window.location.href = "normal_game.html";
+}
+

@@ -20,7 +20,8 @@ function initializePlayers() {
             hits: 0,
             killer: false,
             randomNumber,
-            shots: 0
+            shots: 0,
+            eliminated : false
         };
     });
 
@@ -39,6 +40,12 @@ function handleHit(segment) {
     currentPlayer.shots = currentPlayer.shots + 1;
     const hitNumber = parseInt(segment.split(' ')[1], 10);
 
+    if(currentPlayer.hits === 3){
+        currentPlayer.killer = true;
+    }else{
+        currentPlayer.killer = false;
+    }
+
     if (currentPlayer.killer) {
         for(let i = 0; i < players.length;i++){
             if(hitNumber === players[i].randomNumber && currentPlayer.name !== players[i].name){
@@ -51,9 +58,10 @@ function handleHit(segment) {
                 if(segment.startsWith('1x')) {
                     players[i].hits = players[i].hits - 1;
                 }
-                if(players[i].hits < 0){
-                    players.splice(i,1);
+                if(players[i].hits < 0 ){
+                    players[i].eliminated = true;
                 }
+                break;
             }
         }
 
@@ -78,7 +86,6 @@ function handleHit(segment) {
         }
         if (segment.startsWith('1x')) {
             if (hitNumber === currentPlayer.randomNumber) {
-                currentPlayer.hits = currentPlayer.hits + 2;
                 if (currentPlayer.hits < 3) {
                     currentPlayer.hits = currentPlayer.hits + 1;
                 }
@@ -92,14 +99,41 @@ function handleHit(segment) {
     if(currentPlayer.shots === 3){
         endTurn();
     }
+    updatePlayerList();
 }
+
+function updatePlayerList() {
+    const playerList = document.getElementById("player-list");
+    playerList.innerHTML = "";
+
+    players.forEach((player, index) => {
+        const listItem = document.createElement("li");
+
+        listItem.textContent = `${player.name} (${player.randomNumber}): ${player.hits} Treffer`;
+
+
+        if (player.hits < 0) {
+            listItem.style.textDecoration = "line-through";
+            listItem.style.color = "gray";
+        }
+
+        playerList.appendChild(listItem);
+    });
+}
+
 
 
 function endTurn() {
-    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+    do {
+        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+    } while (players[currentPlayerIndex].eliminated);
+
     updateCurrentPlayer();
 }
 
+
 window.onload = function () {
     initializePlayers();
+    updatePlayerList()
 };
+
