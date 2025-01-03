@@ -9,23 +9,34 @@ function initializePlayers() {
         return;
     }
 
-    players = JSON.parse(storedPlayers).map(name => ({
-        name,
-        hits: 0,
-        killer: false,
-        randomNumber: Math.floor(Math.random() * 20) + 1
-    }));
+    let availableNumbers = Array.from({ length: 20 }, (_, i) => i + 1);
 
+    players = JSON.parse(storedPlayers).map(name => {
+        const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+        const randomNumber = availableNumbers.splice(randomIndex, 1)[0];
+
+        return {
+            name,
+            hits: 0,
+            killer: false,
+            randomNumber,
+            shots: 0
+        };
+    });
+
+    console.log("PLAYERS");
+    console.log(players);
     updateCurrentPlayer();
 }
 
 function updateCurrentPlayer() {
     const currentPlayer = players[currentPlayerIndex];
-    document.getElementById("current-player-name").innerText = `${currentPlayer.name} : ${currentPlayer.randomNumber}`;
+    document.getElementById("current-player-name").innerText = `${currentPlayer.name} - ${currentPlayer.randomNumber}`;
 }
 
 function handleHit(segment) {
     const currentPlayer = players[currentPlayerIndex];
+    currentPlayer.shots = currentPlayer.shots + 1;
     const hitNumber = parseInt(segment.split(' ')[1], 10);
 
     if (currentPlayer.killer) {
@@ -78,17 +89,17 @@ function handleHit(segment) {
             }
         }
     }
+    if(currentPlayer.shots === 3){
+        endTurn();
+    }
 }
 
 
-// Zug beenden
 function endTurn() {
-    // Zum nächsten Spieler wechseln
     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
     updateCurrentPlayer();
 }
 
-// Eventlistener hinzufügen
 window.onload = function () {
     initializePlayers();
 };
