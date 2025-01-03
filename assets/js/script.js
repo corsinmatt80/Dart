@@ -24,5 +24,5 @@ function redirectToGame() {
     localStorage.setItem("players", JSON.stringify(players));
 
     // Redirect to game page
-    window.location.href = "game.html";
+    window.location.href = "killer.html";
 }
