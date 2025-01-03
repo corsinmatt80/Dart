@@ -1,5 +1,6 @@
 let players = [];
 let currentPlayerIndex = 0;
+let history = []; // To store the history of moves
 
 function initializePlayers() {
     const storedPlayers = localStorage.getItem("players");
@@ -21,7 +22,7 @@ function initializePlayers() {
             killer: false,
             randomNumber,
             shots: 0,
-            eliminated : false
+            eliminated: false
         };
     });
 
@@ -37,28 +38,35 @@ function updateCurrentPlayer() {
 
 function handleHit(segment) {
     const currentPlayer = players[currentPlayerIndex];
-    currentPlayer.shots = currentPlayer.shots + 1;
+
+    // Save the current state to history before making changes
+    history.push({
+        players: JSON.parse(JSON.stringify(players)), // Deep copy to save state
+        currentPlayerIndex,
+    });
+
+    currentPlayer.shots += 1;
     const hitNumber = parseInt(segment.split(' ')[1], 10);
 
-    if(currentPlayer.hits === 3){
+    if (currentPlayer.hits === 3) {
         currentPlayer.killer = true;
-    }else{
+    } else {
         currentPlayer.killer = false;
     }
 
     if (currentPlayer.killer) {
-        for(let i = 0; i < players.length;i++){
-            if(hitNumber === players[i].randomNumber && currentPlayer.name !== players[i].name){
-                if(segment.startsWith('3x')){
-                    players[i].hits = players[i].hits - 3;
+        for (let i = 0; i < players.length; i++) {
+            if (hitNumber === players[i].randomNumber && currentPlayer.name !== players[i].name) {
+                if (segment.startsWith('3x')) {
+                    players[i].hits -= 3;
                 }
-                if(segment.startsWith('2x')) {
-                    players[i].hits = players[i].hits - 2;
+                if (segment.startsWith('2x')) {
+                    players[i].hits -= 2;
                 }
-                if(segment.startsWith('1x')) {
-                    players[i].hits = players[i].hits - 1;
+                if (segment.startsWith('1x')) {
+                    players[i].hits -= 1;
                 }
-                if(players[i].hits < 0 ){
+                if (players[i].hits < 0) {
                     players[i].eliminated = true;
                 }
                 break;
@@ -67,36 +75,32 @@ function handleHit(segment) {
 
     } else {
         if (segment.startsWith('3x')) {
-            const hitNumber = parseInt(segment.split(' ')[1], 10);
             if (hitNumber === currentPlayer.randomNumber) {
                 currentPlayer.hits = 3;
                 currentPlayer.killer = true;
-                console.log(`Hits of ${currentPlayer.name} : ${currentPlayer.hits}`);
             }
         }
         if (segment.startsWith('2x')) {
             if (hitNumber === currentPlayer.randomNumber) {
-                currentPlayer.hits = currentPlayer.hits + 2;
+                currentPlayer.hits += 2;
                 if (currentPlayer.hits > 3) {
                     currentPlayer.hits = 3;
                     currentPlayer.killer = true;
                 }
-                console.log(`Hits of ${currentPlayer.name} : ${currentPlayer.hits}`);
             }
         }
         if (segment.startsWith('1x')) {
             if (hitNumber === currentPlayer.randomNumber) {
                 if (currentPlayer.hits < 3) {
-                    currentPlayer.hits = currentPlayer.hits + 1;
+                    currentPlayer.hits += 1;
                 }
-                if(currentPlayer.hits === 3){
+                if (currentPlayer.hits === 3) {
                     currentPlayer.killer = true;
                 }
-                console.log(`Hits of ${currentPlayer.name} : ${currentPlayer.hits}`);
             }
         }
     }
-    if(currentPlayer.shots === 3){
+    if (currentPlayer.shots === 3) {
         endTurn();
     }
     updatePlayerList();
@@ -111,7 +115,6 @@ function updatePlayerList() {
 
         listItem.textContent = `${player.name} (${player.randomNumber}): ${player.hits} Treffer`;
 
-
         if (player.hits < 0) {
             listItem.style.textDecoration = "line-through";
             listItem.style.color = "gray";
@@ -121,8 +124,6 @@ function updatePlayerList() {
     });
 }
 
-
-
 function endTurn() {
     do {
         currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
@@ -131,9 +132,21 @@ function endTurn() {
     updateCurrentPlayer();
 }
 
+function undoLastMove() {
+    if (history.length === 0) {
+        alert("No moves to undo!");
+        return;
+    }
+
+    const lastState = history.pop();
+    players = lastState.players;
+    currentPlayerIndex = lastState.currentPlayerIndex;
+
+    updatePlayerList();
+    updateCurrentPlayer();
+}
 
 window.onload = function () {
     initializePlayers();
-    updatePlayerList()
+    updatePlayerList();
 };
-

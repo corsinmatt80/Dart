@@ -1,5 +1,6 @@
 let players = [];
 let currentPlayerIndex = 0;
+let history = []; // To store the history of moves
 
 function initializePlayers() {
     const storedPlayers = localStorage.getItem("players");
@@ -35,6 +36,13 @@ function handleHit(segment) {
 
     const hitNumber = parseInt(segment.split(" ")[1], 10);
     const points = multiplier * hitNumber;
+
+    // Save the current state to history before modifying
+    history.push({
+        currentPlayerIndex,
+        currentPlayerScore: currentPlayer.score,
+        currentPlayerShots: currentPlayer.shots - 1 // Subtract 1 because it was incremented earlier
+    });
 
     // Check if the player busts
     if (currentPlayer.score - points < 0) {
@@ -83,6 +91,23 @@ function endTurn() {
 function resetGame() {
     localStorage.removeItem("players");
     window.location.href = "index.html";
+}
+
+function undoLastMove() {
+    if (history.length === 0) {
+        alert("No moves to undo!");
+        return;
+    }
+
+    const lastMove = history.pop();
+    currentPlayerIndex = lastMove.currentPlayerIndex;
+
+    const currentPlayer = players[currentPlayerIndex];
+    currentPlayer.score = lastMove.currentPlayerScore;
+    currentPlayer.shots = lastMove.currentPlayerShots;
+
+    updateCurrentPlayer();
+    updatePlayerList();
 }
 
 window.onload = function () {
