@@ -35,3 +35,15 @@
 .segment:nth-child(odd) {
     background-color: #ddd;
 }
+
+#current-player {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-top: 10px;
+    background-color: #457b9d;
+    padding: 10px;
+    border-radius: 5px;
+    color: white;
+    width: 100%;
+    text-align: center;
+}
