@@ -57,6 +57,7 @@ function handleHit(number) {
 function endTurn() {
     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
     updateCurrentPlayerDisplay(); // Aktualisiere den angezeigten Spieler
+    console.log(players);
 }
 
 function updateCurrentPlayerDisplay() {
