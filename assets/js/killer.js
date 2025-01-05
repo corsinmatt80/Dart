@@ -127,6 +127,8 @@ function updatePlayerList() {
 function endTurn() {
     do {
         currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+        currentPlayer = players[currentPlayerIndex];
+        currentPlayer.shots = 0;
     } while (players[currentPlayerIndex].eliminated);
 
     updateCurrentPlayer();
