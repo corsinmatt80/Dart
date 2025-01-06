@@ -62,7 +62,7 @@ function handleHit(segment) {
     if (currentPlayer.shots === 3) {
         endTurn();
     }
-
+    updateCurrentPlayer();
     updatePlayerList();
 }
 
@@ -84,7 +84,12 @@ function updatePlayerList() {
 }
 
 function endTurn() {
-    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+    do {
+        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+        currentPlayer = players[currentPlayerIndex];
+        currentPlayer.shots = 0;
+    } while (players[currentPlayerIndex].eliminated);
+
     updateCurrentPlayer();
 }
 
