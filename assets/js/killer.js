@@ -10,25 +10,49 @@ function initializePlayers() {
         return;
     }
 
-    let availableNumbers = Array.from({ length: 20 }, (_, i) => i + 1);
-
     players = JSON.parse(storedPlayers).map(name => {
-        const randomIndex = Math.floor(Math.random() * availableNumbers.length);
-        const randomNumber = availableNumbers.splice(randomIndex, 1)[0];
-
         return {
             name,
             hits: 0,
             killer: false,
-            randomNumber,
+            randomNumber : 0,
             shots: 0,
             eliminated: false
         };
     });
+    let numbersToAssign = assignBalancedRandomNumber(players.length);
+    console.log(numbersToAssign);
+    for(let i = 0; i < players.length;i++){
+        players[i].randomNumber = numbersToAssign[i];
+    }
 
-    console.log("PLAYERS");
-    console.log(players);
     updateCurrentPlayer();
+}
+
+function assignBalancedRandomNumber(playerCount){
+    let numbers = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
+    let numbersToAssign = []
+    let indexFirstNumber = Math.floor(Math.random() * 20);
+
+    numbersToAssign.push(numbers[indexFirstNumber]);
+    for(let i = 1;i<=5;i++){
+        numbers[indexFirstNumber-3+i] = 0;
+    }
+
+    for(let i = 1; i < playerCount; i++){
+        let indexNextNumber = Math.floor(Math.random()*numbers.length);
+        let nextNumber = numbers[indexNextNumber];
+        while(nextNumber === 0){
+            indexNextNumber = Math.floor(Math.random()*numbers.length);
+            nextNumber = numbers[indexNextNumber];
+        }
+        numbersToAssign.push(numbers[indexNextNumber]);
+        for(let i = 1;i<=5;i++){
+            numbers[indexNextNumber-3+i] = 0;
+        }
+    }
+
+    return numbersToAssign;
 }
 
 function updateCurrentPlayer() {

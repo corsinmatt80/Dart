@@ -1,7 +1,7 @@
 function addNameField() {
     const list = document.getElementById("name-list");
-    if (list.children.length >= 10) {
-        alert("You can only add up to 10 players.");
+    if (list.children.length >= 6) {
+        alert("You can only add up to 6 players.");
         return;
     }
     const li = document.createElement("li");
