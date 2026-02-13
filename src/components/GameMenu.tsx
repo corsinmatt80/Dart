@@ -56,6 +56,20 @@ function GameMenu() {
     initializeGame(game, players);
   };
 
+  // Generiere Handy-Kamera URL basierend auf aktuellem Host
+  const getCameraUrl = () => {
+    const isGitHubPages = window.location.hostname.includes('github.io');
+    if (isGitHubPages) {
+      // Auf GitHub Pages: verwende aktuelle Domain
+      return `${window.location.origin}/Dart/camera`;
+    } else {
+      // Lokal: verwende lokale IP mit dev server port
+      return `http://${localIp}:5174/Dart/camera`;
+    }
+  };
+
+  const cameraUrl = getCameraUrl();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-dark via-blue-900 to-dark flex items-center justify-center p-4">
       <div className="w-full max-w-2xl">
@@ -71,7 +85,7 @@ function GameMenu() {
               <p className="text-blue-200 text-sm mb-3">Öffne diese URL auf deinem Handy:</p>
               
               <code className="bg-blue-900/50 px-3 py-2 rounded text-blue-100 text-xs block break-all font-mono">
-                http://{localIp}:5174/Dart/camera
+                {cameraUrl}
               </code>
               <p className="text-blue-200 text-xs mt-3">Das Handy wird die Dartscheibe filmen und automatisch Treffer erkennen!</p>
             </div>
