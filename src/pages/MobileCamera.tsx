@@ -19,6 +19,7 @@ function MobileCamera() {
   const [isConnected, setIsConnected] = useState(false);
   const prevFrameRef = useRef<ImageData | null>(null);
   const lastHitRef = useRef<number>(0);
+  console.log("MobileCamera rendered");
 
   // Starte Kamera
   useEffect(() => {
