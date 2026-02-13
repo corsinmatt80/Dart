@@ -94,7 +94,7 @@ function Dartboard({ onHit, disabled = false }: DartboardProps) {
         {/* Dartboard Image */}
         <img
           ref={imageRef}
-          src="/dartboard.png"
+          src={`${(import.meta as any).env.BASE_URL}dartboard.png`}
           alt="Dartboard"
           className="w-full h-full object-cover absolute inset-0"
           onLoad={() => setImageLoaded(true)}
