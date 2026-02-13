@@ -5,15 +5,22 @@
     <title>Dart Game Hub</title>
     <script>
       // GitHub Pages SPA Router
-      // Redirect all 404s to index.html while preserving the path
-      var path = window.location.pathname;
+      // Redirect all routes to index.html, preserving the path
+      var pathparts = location.pathname.split('/').filter(p => p.length > 0);
+      var root = '/';
       
-      // Store the redirect path in sessionStorage
-      sessionStorage.setItem('redirect', path);
+      // Determine root path
+      if (pathparts.length >= 1 && pathparts[0] !== 'index.html') {
+        root = '/' + pathparts[0] + '/';
+      }
       
-      // Redirect to root
-      var baseUrl = path.split('/').slice(0, 2).join('/'); // Get /Dart
-      window.location.replace(baseUrl + '/index.html');
+      // Redirect to index.html with path as query parameter
+      var pathname = location.pathname;
+      if (!pathname.endsWith('index.html') && !pathname.endsWith('/')) {
+        location.replace(root + 'index.html?redirect=' + encodeURIComponent(pathname.replace(root, '')));
+      } else if (!pathname.endsWith('/')) {
+        location.replace(root);
+      }
     </script>
   </head>
   <body>
