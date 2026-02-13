@@ -10,8 +10,9 @@ import './styles/global.css';
 function App() {
   const { currentGame, players, recordHit } = useAppStore();
 
-  // Prüfe ob Mobile Camera Seite angefordert wird
-  const isMobileCamera = window.location.pathname.includes('/camera');
+  // Prüfe ob Mobile Camera Seite angefordert wird (mit und ohne /Dart prefix für GitHub Pages)
+  const pathname = window.location.pathname;
+  const isMobileCamera = pathname.includes('/camera') || pathname.endsWith('/camera/');
 
   useEffect(() => {
     // Höre auf Treffer vom Handy (wenn Desktop offen)
