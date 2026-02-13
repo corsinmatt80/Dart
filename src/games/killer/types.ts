@@ -1,4 +1,4 @@
-import { Player, HitData } from './types';
+import { Player, HitData } from '../types';
 
 export interface KillerGameState {
   players: (Player & {

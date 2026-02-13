@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { DARTBOARD_SECTIONS } from '../games/types';
 import { HitData } from '../games/types';
-import dartboardImage from '../../assets/images/dartboard.png';
 
 interface DartboardProps {
   onHit: (hitData: HitData) => void;
@@ -95,7 +94,7 @@ function Dartboard({ onHit, disabled = false }: DartboardProps) {
         {/* Dartboard Image */}
         <img
           ref={imageRef}
-          src={dartboardImage}
+          src="/dartboard.png"
           alt="Dartboard"
           className="w-full h-full object-cover absolute inset-0"
           onLoad={() => setImageLoaded(true)}

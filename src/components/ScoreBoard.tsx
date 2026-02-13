@@ -1,5 +1,5 @@
 import React from 'react';
-import { KillerGameState } from './types';
+import { KillerGameState } from '../games/killer/types';
 import { RotateCcw } from 'lucide-react';
 
 interface ScoreBoardProps {
