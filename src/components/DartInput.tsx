@@ -11,7 +11,7 @@ function DartInput({ onHit, onUndo, undoAvailable = false, disabled = false }: D
   const [selectedMultiplier, setSelectedMultiplier] = useState<1 | 2 | 3>(1);
   const [recentHits, setRecentHits] = useState<Array<{ value: number; multiplier: number; points: number }>>([]);
 
-  // Dartscheibe Zahlen chronologisch von 1-20
+  // Dartboard numbers chronologically from 1-20
   const dartNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
   const handleDartClick = (value: number) => {
@@ -26,12 +26,12 @@ function DartInput({ onHit, onUndo, undoAvailable = false, disabled = false }: D
 
     onHit(hit);
     
-    // Speichere den Treffer für lokale Anzeige
+    // Save the hit for local display
     setRecentHits([...recentHits, { value, multiplier: selectedMultiplier, points }]);
   };
 
   const handleBull = (bullValue: number) => {
-    // Bull wird nicht mit Multiplier kombiniert
+    // Bull is not combined with multiplier
     const hit = {
       x: 0,
       y: 0,

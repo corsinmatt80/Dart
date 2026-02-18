@@ -10,7 +10,7 @@ function KillerGame() {
   const [soundEnabled, setSoundEnabled] = React.useState(true);
   const [inputMode, setInputMode] = React.useState<'camera' | 'manual'>('manual');
 
-  // Für Camera-Remote-Modus: Höre auf Treffer vom /camera Fenster
+  // For Camera-Remote Mode: Listen for hits from /camera window
   React.useEffect(() => {
     if (inputMode !== 'camera') return;
 
@@ -23,7 +23,7 @@ function KillerGame() {
 
     window.addEventListener('dartHit', handleDartHit);
 
-    // Prüfe auch localStorage auf gepufferte Treffer
+    // Also check localStorage for buffered hits
     const checkStoragedHits = setInterval(() => {
       try {
         const hits = JSON.parse(localStorage.getItem('mobile_hits') || '[]');
@@ -33,11 +33,11 @@ function KillerGame() {
               handleHit(hit);
             }
           });
-          // Lösche verarbeitete Treffer
+          // Delete processed hits
           localStorage.setItem('mobile_hits', '[]');
         }
       } catch (err) {
-        console.error('Fehler beim Lesen der Treffer:', err);
+        console.error('Error reading hits:', err);
       }
     }, 200);
 
@@ -90,12 +90,12 @@ function KillerGame() {
             ) : (
               <div className="bg-white/10 backdrop-blur-md rounded-lg p-8 border border-white/20 text-center">
                 <div className="text-4xl mb-4">📱</div>
-                <h2 className="text-2xl font-bold text-white mb-2">Camera Mode Aktiv</h2>
-                <p className="text-gray-300 mb-4">Öffne auf einem anderen Gerät:</p>
+                <h2 className="text-2xl font-bold text-white mb-2">Camera Mode Active</h2>
+                <p className="text-gray-300 mb-4">Open on another device:</p>
                 <p className="bg-blue-900/50 p-4 rounded text-blue-200 font-mono break-all mb-4">
                   {window.location.origin}/#/camera
                 </p>
-                <p className="text-gray-400 text-sm">Die erkannten Treffer werden automatisch registriert.</p>
+                <p className="text-gray-400 text-sm">Detected hits will be registered automatically.</p>
               </div>
             )}
 
@@ -111,8 +111,8 @@ function KillerGame() {
                       : 'bg-white/20 hover:bg-white/30 text-white'
                   }`}
                 >
-                  {mode === 'manual' && '👆 Buttons'}
-                  {mode === 'camera' && '📱 Kamera'}
+                  {mode === 'manual' && '👆 Manual'}
+                  {mode === 'camera' && '📱 Camera'}
                 </button>
               ))}
             </div>

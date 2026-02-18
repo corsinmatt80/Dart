@@ -7,15 +7,15 @@ function GameMenu() {
   const [localIp, setLocalIp] = useState<string>('localhost');
 
   useEffect(() => {
-    // Einfache IP-Ermittlung ohne WebRTC
+    // Simple IP detection without WebRTC
     const getLocalIp = () => {
       try {
-        // Fallback: versuche von window.location zu ermitteln
+        // Fallback: try to determine from window.location
         const hostname = window.location.hostname;
         if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
           setLocalIp(hostname);
         } else {
-          // Versuche WebRTC nur als Backup
+          // Try WebRTC only as backup
           const rtcPeerConnection = 
             window.RTCPeerConnection ||
             (window as any).webkitRTCPeerConnection ||
@@ -44,7 +44,7 @@ function GameMenu() {
           }).catch(() => {});
         }
       } catch (err) {
-        console.error('IP-Detection Fehler:', err);
+        console.error('IP detection error:', err);
         setLocalIp('192.168.1.x');
       }
     };
@@ -67,13 +67,13 @@ function GameMenu() {
           <div className="flex items-start gap-3">
             <Smartphone className="text-blue-400 mt-1" size={20} />
             <div className="flex-1">
-              <h3 className="text-white font-bold mb-2">📱 Mit Handy verbinden</h3>
-              <p className="text-blue-200 text-sm mb-3">Öffne diese URL auf deinem Handy:</p>
+              <h3 className="text-white font-bold mb-2">📱 Connect with smartphone</h3>
+              <p className="text-blue-200 text-sm mb-3">Open this URL on your smartphone:</p>
               
               <code className="bg-blue-900/50 px-3 py-2 rounded text-blue-100 text-xs block break-all font-mono">
                 https://corsinmatt80.github.io/Dart/#/camera
               </code>
-              <p className="text-blue-200 text-xs mt-3">Das Handy wird die Dartscheibe filmen und automatisch Treffer erkennen!</p>
+              <p className="text-blue-200 text-xs mt-3">Your smartphone will film the dartboard and automatically detect hits!</p>
             </div>
           </div>
         </div>

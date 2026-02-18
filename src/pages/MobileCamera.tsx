@@ -31,20 +31,20 @@ function MobileCamera() {
   const dartboardHistoryRef = useRef<DartboardDetection[]>([]);
   console.log("MobileCamera rendered");
 
-  // Starte Kamera
+  // Start Camera
   useEffect(() => {
     const startCamera = async () => {
       try {
-        // Prüfe ob HTTPS vorhanden ist (notwendig für getUserMedia)
+        // Check if HTTPS is present (required for getUserMedia)
         if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-          setFeedback('⚠️ HTTPS erforderlich! Kamera funktioniert nur auf sicheren Verbindungen.');
+          setFeedback('⚠️ HTTPS required! Camera only works on secure connections.');
           setIsConnected(false);
           return;
         }
 
-        // Prüfe ob getUserMedia verfügbar ist
+        // Check if getUserMedia is available
         if (!navigator.mediaDevices?.getUserMedia) {
-          setFeedback('❌ Kamera wird von diesem Browser nicht unterstützt');
+          setFeedback('❌ Camera is not supported by this browser');
           setIsConnected(false);
           return;
         }
@@ -59,22 +59,22 @@ function MobileCamera() {
           setFeedback('');
         }
       } catch (err) {
-        console.error('Kamera-Fehler:', err);
+        console.error('Camera error:', err);
         setIsConnected(false);
         
-        // Bessere Fehlerbehandlung
+        // Better error handling
         if (err instanceof DOMException) {
           if (err.name === 'NotAllowedError') {
-            setFeedback('❌ Kamera-Zugriff verweigert. Bitte Berechtigung erteilen.');
+            setFeedback('❌ Camera access denied. Please grant permission.');
           } else if (err.name === 'NotFoundError') {
-            setFeedback('❌ Keine Kamera gefunden.');
+            setFeedback('❌ No camera found.');
           } else if (err.name === 'NotReadableError') {
-            setFeedback('❌ Kamera wird bereits verwendet.');
+            setFeedback('❌ Camera is already in use.');
           } else {
-            setFeedback(`❌ Kamera-Fehler: ${err.message}`);
+            setFeedback(`❌ Camera error: ${err.message}`);
           }
         } else {
-          setFeedback('❌ Kamera nicht verfügbar');
+          setFeedback('❌ Camera not available');
         }
       }
     };
@@ -228,7 +228,7 @@ function MobileCamera() {
   };
 
   const smoothDartboardDetection = (detections: DartboardDetection[]): DartboardDetection => {
-    // Berechne gewichteten Durchschnitt: neuere Frames zählen mehr
+    // Calculate weighted average: newer frames count more
     const weights = detections.map((_, i) => 1 + i * 0.5); // Linear increasing weights
     const totalWeight = weights.reduce((a, b) => a + b, 0);
 
@@ -255,14 +255,14 @@ function MobileCamera() {
     const width = frame.width;
     const height = frame.height;
 
-    // Versuche zuerst Kanten-basierte Erkennung
+    // Try edge-based detection first
     const edgeDetection = detectDartboardByEdges(data, width, height);
     if (edgeDetection) {
       return edgeDetection;
     }
 
-    // Fallback: Dartscheibe ist wahrscheinlich in der Bildmitte
-    // Das ist eine gute Annahme, wenn der Benutzer die Scheibe zentriert
+    // Fallback: Dartboard is probably in center of image
+    // This is a good assumption if user centers the board
     return {
       centerX: width / 2,
       centerY: height / 2,
@@ -271,10 +271,10 @@ function MobileCamera() {
   };
 
   const detectDartboardByEdges = (data: Uint8ClampedArray, width: number, height: number): DartboardDetection | null => {
-    // Erstelle ein Kantenbild für bessere Dartscheiben-Erkennung
+    // Create edge map for better dartboard detection
     const edgeMap = new Uint8ClampedArray(width * height);
 
-    // Sobel Edge Detection - findet Kanten
+    // Sobel Edge Detection - finds edges
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
         // X-Gradient
@@ -509,7 +509,7 @@ function MobileCamera() {
       <div className="bg-gray-900 px-4 py-3 border-b border-gray-700 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Camera size={24} className="text-red-500" />
-          <h1 className="text-white font-bold">Dart Kamera</h1>
+          <h1 className="text-white font-bold">Dart Camera</h1>
         </div>
         <div className="flex items-center gap-2">
           {isConnected ? (
@@ -517,7 +517,7 @@ function MobileCamera() {
           ) : (
             <WifiOff size={20} className="text-red-500" />
           )}
-          <span className="text-white text-sm">Treffer: {hitCount}</span>
+          <span className="text-white text-sm">Hits: {hitCount}</span>
         </div>
       </div>
 
@@ -536,7 +536,7 @@ function MobileCamera() {
           style={{ pointerEvents: 'none' }}
         />
 
-        {/* Dartboard wird automatisch erkannt und grün markiert */}
+        {/* Dartboard is automatically detected and marked in green */}
 
         {/* Feedback */}
         {feedback && (
@@ -547,13 +547,13 @@ function MobileCamera() {
         
         {!dartboardDetected && (
           <div className="absolute top-8 left-4 right-4 bg-yellow-500 text-black px-4 py-2 rounded-lg text-center font-bold">
-            🎯 Dartscheibe wird erkannt...
+            🎯 Dartboard being detected...
           </div>
         )}
         
         {dartboardDetected && (
           <div className="absolute top-8 left-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg text-center font-bold">
-            ✅ Dartscheibe erkannt! Werfe den Pfeil ab!
+            ✅ Dartboard detected! Throw the dart!
           </div>
         )}
       </div>
@@ -561,7 +561,7 @@ function MobileCamera() {
       {/* Footer Info */}
       <div className="bg-gray-900 px-4 py-4 border-t border-gray-700">
         <p className="text-gray-400 text-sm text-center">
-          🎯 Die Dartscheibe wird automatisch erkannt (grüner Kreis). Jetzt einen Pfeil werfen!
+          🎯 Dartboard is automatically detected (green circle). Now throw a dart!
         </p>
       </div>
     </div>

@@ -3,14 +3,14 @@ import { useAppStore } from '../../store/appStore';
 import { Darts501GameState } from './types';
 import DartInput from '../../components/DartInput';
 import ScoreBoard from '../../components/ScoreBoard';
-import { Volume2, VolumeX, Undo2 } from 'lucide-react';
+import { Volume2, VolumeX } from 'lucide-react';
 
 function Darts501Game() {
   const { gameState, recordHit, endTurn, resetGame, undo, history } = useAppStore();
   const [soundEnabled, setSoundEnabled] = React.useState(true);
   const [inputMode, setInputMode] = React.useState<'camera' | 'manual'>('manual');
 
-  // Für Camera-Remote-Modus: Höre auf Treffer vom /camera Fenster
+  // For Camera-Remote Mode: Listen for hits from /camera window
   React.useEffect(() => {
     if (inputMode !== 'camera') return;
 
@@ -23,7 +23,7 @@ function Darts501Game() {
 
     window.addEventListener('dartHit', handleDartHit);
 
-    // Prüfe auch localStorage auf gepufferte Treffer
+    // Also check localStorage for buffered hits
     const checkStoragedHits = setInterval(() => {
       try {
         const hits = JSON.parse(localStorage.getItem('mobile_hits') || '[]');
@@ -33,11 +33,11 @@ function Darts501Game() {
               handleHit(hit);
             }
           });
-          // Lösche verarbeitete Treffer
+          // Delete processed hits
           localStorage.setItem('mobile_hits', '[]');
         }
       } catch (err) {
-        console.error('Fehler beim Lesen der Treffer:', err);
+        console.error('Error reading hits:', err);
       }
     }, 200);
 
@@ -63,17 +63,34 @@ function Darts501Game() {
   };
 
   const getScoreStatus = () => {
-    if (currentPlayer.score === 0) return '✅ WIN!';
-    if (currentPlayer.score < 0) return '❌ BUST';
+    if (dartsState.gamePhase === 'ended') return '🎉 WINNER!';
+    if (currentPlayer.turnBusted) return `❌ BUST (${currentPlayer.scoreAtTurnStart} → revert)`;
     return `📍 ${currentPlayer.score}`;
+  };
+
+  const getInstructions = () => {
+    if (dartsState.gamePhase === 'ended') {
+      return 'Game Won!';
+    }
+    if (currentPlayer.turnBusted) {
+      return `❌ Bust! Finish the turn (${currentPlayer.shots}/3)`;
+    }
+    if (currentPlayer.shots === 3) {
+      return `Points: ${currentPlayer.score} - Next player`;
+    }
+    return `Points left: ${currentPlayer.score}`;
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-dark via-blue-900 to-dark p-4">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
+        {/* Header with Score */}
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-accent">🎯 501 Darts</h1>
+          <div>
+            <h1 className="text-3xl font-bold text-accent">🎯 501 Darts</h1>
+            <p className="text-xl font-bold text-white mt-2">{currentPlayer.name}: {getScoreStatus()}</p>
+            <p className="text-gray-300 mt-1">{getInstructions()}</p>
+          </div>
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition"
@@ -86,16 +103,16 @@ function Darts501Game() {
           {/* Dartboard or Manual Input */}
           <div className="lg:col-span-2">
             {inputMode === 'manual' ? (
-              <DartInput onHit={handleHit} onUndo={undo} undoAvailable={history.length > 0} disabled={dartsState.gamePhase === 'ended'} />
+              <DartInput onHit={handleHit} onUndo={undo} undoAvailable={history.length > 0} disabled={dartsState.gamePhase === 'ended' || currentPlayer.turnBusted} />
             ) : (
               <div className="bg-white/10 backdrop-blur-md rounded-lg p-8 border border-white/20 text-center">
                 <div className="text-4xl mb-4">📱</div>
-                <h2 className="text-2xl font-bold text-white mb-2">Camera Mode Aktiv</h2>
-                <p className="text-gray-300 mb-4">Öffne auf einem anderen Gerät:</p>
+                <h2 className="text-2xl font-bold text-white mb-2">Camera Mode Active</h2>
+                <p className="text-gray-300 mb-4">Open on another device:</p>
                 <p className="bg-blue-900/50 p-4 rounded text-blue-200 font-mono break-all mb-4">
                   {window.location.origin}/#/camera
                 </p>
-                <p className="text-gray-400 text-sm">Die erkannten Treffer werden automatisch registriert.</p>
+                <p className="text-gray-400 text-sm">Detected hits will be registered automatically.</p>
               </div>
             )}
 
@@ -111,8 +128,8 @@ function Darts501Game() {
                       : 'bg-white/20 hover:bg-white/30 text-white'
                   }`}
                 >
-                  {mode === 'manual' && '👆 Buttons'}
-                  {mode === 'camera' && '📱 Kamera'}
+                  {mode === 'manual' && '👆 Manual'}
+                  {mode === 'camera' && '📱 Camera'}
                 </button>
               ))}
             </div>
@@ -138,12 +155,6 @@ function Darts501Game() {
                     End Turn
                   </button>
                 )}
-                <button
-                  onClick={() => undo()}
-                  className="w-full px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-bold text-white transition text-sm flex items-center justify-center gap-1"
-                >
-                  <Undo2 size={16} /> Undo
-                </button>
               </div>
             </div>
           </div>

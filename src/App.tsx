@@ -4,19 +4,19 @@ import PlayerSetup from './components/PlayerSetup';
 import GameMenu from './components/GameMenu';
 import KillerGame from './games/killer/KillerGame';
 import Darts501Game from './games/darts501/Darts501Game';
-import MobileCamera from './pages/MobileCamera';
+import MobileCameraV2 from './pages/MobileCameraV2';
 import './styles/global.css';
 
 function App() {
   const { currentGame, players, recordHit } = useAppStore();
 
-  // Prüfe ob Mobile Camera Seite angefordert wird (Hash-basiert für GitHub Pages)
+  // Check if Mobile Camera page is requested (hash-based for GitHub Pages)
   const hash = window.location.hash.toLowerCase();
   
   const isMobileCamera = hash.includes('#camera') || hash === '#/camera';
 
   useEffect(() => {
-    // Höre auf Treffer vom Handy (wenn Desktop offen)
+    // Listen for hits from smartphone (if desktop is open)
     const handleDartHit = (event: Event) => {
       const customEvent = event as CustomEvent;
       if (customEvent.detail) {
@@ -26,14 +26,14 @@ function App() {
 
     window.addEventListener('dartHit', handleDartHit);
 
-    // Syncronisiere auch mit localStorage (Polling)
+    // Also sync with localStorage (Polling)
     const syncInterval = setInterval(() => {
       try {
         const hits = JSON.parse(localStorage.getItem('mobile_hits') || '[]');
         if (hits.length > 0) {
-          // Nimm den letzten Treffer
+          // Take last hit
           const lastHit = hits[hits.length - 1];
-          // Prüfe ob wir ihn schon verarbeitet haben (Deduplizierung)
+          // Check if we already processed it (deduplication)
           const lastProcessedTimestamp = localStorage.getItem('last_hit_timestamp');
           if (!lastProcessedTimestamp || lastHit.timestamp > parseInt(lastProcessedTimestamp)) {
             recordHit(lastHit);
@@ -41,7 +41,7 @@ function App() {
           }
         }
       } catch (err) {
-        console.error('Sync-Fehler:', err);
+        console.error('Sync error:', err);
       }
     }, 500);
 
@@ -53,7 +53,7 @@ function App() {
 
   // Show mobile camera if requested
   if (isMobileCamera) {
-    return <MobileCamera />;
+    return <MobileCameraV2 />;
   }
 
   // Show player setup if no players
