@@ -28,9 +28,15 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: List dist folder for debugging
+        run: ls -la ./dist && ls -la ./dist/assets
+
       - name: Deploy to gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
-          cname: ''
+          force_orphan: true
+          enable_jekyll: false
+
+
