@@ -1,0 +1,15 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Explicitly set text file types
+*.html text
+*.css text
+*.js text
+*.ts text
+*.tsx text
+*.json text
+*.md text
+
+# Ensure JS files are never treated as binary
+*.js text eol=lf -crlf
+docs/assets/*.js text eol=lf linguist-language=JavaScript
