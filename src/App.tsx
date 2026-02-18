@@ -10,22 +10,14 @@ import './styles/global.css';
 function App() {
   const { currentGame, players, recordHit } = useAppStore();
 
-  // Prüfe ob Mobile Camera Seite angefordert wird
-  let pathname = window.location.pathname.toLowerCase();
-  
-  // Falls von 404.html umgeleitet, prüfe sessionStorage
-  const redirectPath = sessionStorage.getItem('redirect_path');
-  if (redirectPath) {
-    pathname = redirectPath.toLowerCase();
-    sessionStorage.removeItem('redirect_path');
-  }
-  
-  const hash = window.location.hash.toLowerCase(); 
+  // Prüfe ob Mobile Camera Seite angefordert wird (unterstützt Hash-Routing für GitHub Pages)
+  const hash = window.location.hash.toLowerCase();
+  const pathname = window.location.pathname.toLowerCase();
   
   const isMobileCamera = 
-    pathname.includes('/camera') || 
-    pathname.endsWith('/camera/') ||
-    hash.includes('/camera');
+    hash.includes('/camera') || 
+    hash === '#/camera' ||
+    pathname.includes('/camera');
 
   useEffect(() => {
     // Höre auf Treffer vom Handy (wenn Desktop offen)

@@ -4,18 +4,14 @@
     <meta charset="utf-8">
     <title>Dart Game Hub</title>
     <script>
-      // Save the path before redirect
-      sessionStorage.setItem('redirect_path', location.pathname);
-      
-      // Redirect to root
-      var pathparts = location.pathname.split('/').filter(p => p.length > 0);
-      var root = '/';
-      
-      if (pathparts.length >= 1 && pathparts[0] !== 'index.html') {
-        root = '/' + pathparts[0] + '/';
-      }
-      
-      location.replace(root);
+      // Single Page App rewrite for GitHub Pages
+      // Redirect /path to /#/path
+      var l = window.location;
+      l.replace(
+        l.protocol + '//' + l.hostname + 
+        (l.port ? ':' + l.port : '') + 
+        '/Dart/#' + l.pathname.replace(/\/$/, '') + (l.search || '')
+      );
     </script>
   </head>
   <body>
