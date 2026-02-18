@@ -71,7 +71,7 @@ function GameMenu() {
               <p className="text-blue-200 text-sm mb-3">Öffne diese URL auf deinem Handy:</p>
               
               <code className="bg-blue-900/50 px-3 py-2 rounded text-blue-100 text-xs block break-all font-mono">
-                http://localhost:5173/Dart/camera
+                https://corsinmatt80.github.io/Dart/#/camera
               </code>
               <p className="text-blue-200 text-xs mt-3">Das Handy wird die Dartscheibe filmen und automatisch Treffer erkennen!</p>
             </div>
