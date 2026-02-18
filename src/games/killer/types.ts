@@ -94,6 +94,11 @@ export function procesKillerHit(
         // Reduce hits by multiplier (3x hit = reduce by 3, 2x hit = reduce by 2, etc)
         player.hits = Math.max(0, player.hits - hitData.multiplier);
         
+        // If hits fall below 3, player loses killer status
+        if (player.hits < 3) {
+          player.killer = false;
+        }
+        
         // If they were already at 0 and got hit, they're eliminated
         if (wasAtZero) {
           player.eliminated = true;
