@@ -127,8 +127,8 @@ function MobileCamera() {
       }
 
       // Draw dartboard overlay
-      if (dartboardRef.current && overlayCtx) {
-        overlayCtx.clearRect(0, 0, overlayCanvas!.width, overlayCanvas!.height);
+      if (dartboardRef.current && overlayCtx && overlayCanvas) {
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
         const db = dartboardRef.current;
         
         // Grüner Kreis um erkannte Dartscheibe
