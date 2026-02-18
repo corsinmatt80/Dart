@@ -11,12 +11,13 @@ function App() {
   const { currentGame, players, recordHit } = useAppStore();
 
   // Prüfe ob Mobile Camera Seite angefordert wird
-  const pathname = window.location.pathname;
+  const pathname = window.location.pathname.toLowerCase();
+  const hash = window.location.hash.toLowerCase(); 
   
   const isMobileCamera = 
     pathname.includes('/camera') || 
     pathname.endsWith('/camera/') ||
-    pathname.includes('/Dart/camera');
+    hash.includes('/camera');
 
   useEffect(() => {
     // Höre auf Treffer vom Handy (wenn Desktop offen)

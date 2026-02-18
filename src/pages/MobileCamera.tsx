@@ -25,6 +25,20 @@ function MobileCamera() {
   useEffect(() => {
     const startCamera = async () => {
       try {
+        // Prüfe ob HTTPS vorhanden ist (notwendig für getUserMedia)
+        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+          setFeedback('⚠️ HTTPS erforderlich! Kamera funktioniert nur auf sicheren Verbindungen.');
+          setIsConnected(false);
+          return;
+        }
+
+        // Prüfe ob getUserMedia verfügbar ist
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setFeedback('❌ Kamera wird von diesem Browser nicht unterstützt');
+          setIsConnected(false);
+          return;
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
         });
@@ -32,11 +46,26 @@ function MobileCamera() {
           videoRef.current.srcObject = stream;
           setCameraActive(true);
           setIsConnected(true);
+          setFeedback('');
         }
       } catch (err) {
         console.error('Kamera-Fehler:', err);
-        setFeedback('❌ Kamera nicht verfügbar');
         setIsConnected(false);
+        
+        // Bessere Fehlerbehandlung
+        if (err instanceof DOMException) {
+          if (err.name === 'NotAllowedError') {
+            setFeedback('❌ Kamera-Zugriff verweigert. Bitte Berechtigung erteilen.');
+          } else if (err.name === 'NotFoundError') {
+            setFeedback('❌ Keine Kamera gefunden.');
+          } else if (err.name === 'NotReadableError') {
+            setFeedback('❌ Kamera wird bereits verwendet.');
+          } else {
+            setFeedback(`❌ Kamera-Fehler: ${err.message}`);
+          }
+        } else {
+          setFeedback('❌ Kamera nicht verfügbar');
+        }
       }
     };
 
