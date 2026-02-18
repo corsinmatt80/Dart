@@ -44,6 +44,20 @@ function DartInput({ onHit, onUndo, undoAvailable = false, disabled = false }: D
     setRecentHits([...recentHits, { value: bullValue, multiplier: 1, points: bullValue }]);
   };
 
+  const handleMiss = () => {
+    // Miss - no points, counts as a throw
+    const hit = {
+      x: 0,
+      y: 0,
+      value: 0,
+      multiplier: 0,
+      points: 0,
+    };
+
+    onHit(hit);
+    setRecentHits([...recentHits, { value: 0, multiplier: 0, points: 0 }]);
+  };
+
   const handleUndo = () => {
     if (undoAvailable && onUndo) {
       onUndo();
@@ -88,7 +102,7 @@ function DartInput({ onHit, onUndo, undoAvailable = false, disabled = false }: D
       </div>
 
       {/* Bull Options - kompakt */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         <button
           onClick={() => handleBull(25)}
           disabled={disabled}
@@ -102,6 +116,13 @@ function DartInput({ onHit, onUndo, undoAvailable = false, disabled = false }: D
           className="py-3 bg-red-700 hover:bg-red-800 text-white font-bold text-base rounded transition disabled:opacity-50"
         >
           50
+        </button>
+        <button
+          onClick={handleMiss}
+          disabled={disabled}
+          className="py-3 bg-gray-600 hover:bg-gray-500 text-white font-bold text-base rounded transition disabled:opacity-50"
+        >
+          Miss
         </button>
         <button
           onClick={handleUndo}
