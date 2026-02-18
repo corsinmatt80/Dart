@@ -28,6 +28,7 @@ function MobileCamera() {
   const prevFrameRef = useRef<ImageData | null>(null);
   const lastHitRef = useRef<number>(0);
   const dartboardRef = useRef<DartboardDetection | null>(null);
+  const dartboardHistoryRef = useRef<DartboardDetection[]>([]);
   console.log("MobileCamera rendered");
 
   // Starte Kamera
@@ -86,6 +87,9 @@ function MobileCamera() {
         tracks.forEach((track) => track.stop());
       }
       setCameraActive(false);
+      dartboardHistoryRef.current = [];
+      dartboardRef.current = null;
+      setDartboardDetected(false);
     };
   }, []);
 
@@ -121,8 +125,40 @@ function MobileCamera() {
       // Dartboard detection every 10 frames (für Performance)
       detectionCounter++;
       if (detectionCounter > 10) {
-        dartboardRef.current = detectDartboard(currentFrame);
-        setDartboardDetected(dartboardRef.current !== null);
+        const newDetection = detectDartboard(currentFrame);
+        
+        // Nutze temporale Filterung um Flackern zu vermeiden
+        if (newDetection) {
+          dartboardHistoryRef.current.push(newDetection);
+          // Behalte die letzten 5 Detektionen
+          if (dartboardHistoryRef.current.length > 5) {
+            dartboardHistoryRef.current.shift();
+          }
+          
+          // Berechne Durchschnitt der letzten Detektionen für Stabilität
+          const smoothedDetection = smoothDartboardDetection(dartboardHistoryRef.current);
+          
+          // Nur aktualisierung wenn sich die Position genug geändert hat (Hysteresis)
+          if (!dartboardRef.current || 
+              Math.hypot(
+                smoothedDetection.centerX - dartboardRef.current.centerX,
+                smoothedDetection.centerY - dartboardRef.current.centerY
+              ) > 30 ||
+              Math.abs(smoothedDetection.radius - dartboardRef.current.radius) > 15) {
+            dartboardRef.current = smoothedDetection;
+            setDartboardDetected(true);
+          }
+        } else if (dartboardRef.current) {
+          // Kein guter Fund, aber wir haben bereits eine Detection - behalte sie
+          console.log('Dartboard-Erkennung schwach aber vorhanden, behalte alte Position');
+        } else {
+          // Versuche Fallback
+          dartboardRef.current = detectDartboard(currentFrame);
+          if (dartboardRef.current) {
+            setDartboardDetected(true);
+          }
+        }
+        
         detectionCounter = 0;
       }
 
@@ -183,54 +219,175 @@ function MobileCamera() {
     return () => cancelAnimationFrame(animationId);
   }, [cameraActive, hitCount]);
 
+  const getPixelBrightness = (data: Uint8ClampedArray, x: number, y: number, width: number): number => {
+    if (x < 0 || x >= width || y < 0 || y >= Math.floor(data.length / 4 / width)) {
+      return 127;
+    }
+    const idx = (y * width + x) * 4;
+    return (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+  };
+
+  const smoothDartboardDetection = (detections: DartboardDetection[]): DartboardDetection => {
+    // Berechne gewichteten Durchschnitt: neuere Frames zählen mehr
+    const weights = detections.map((_, i) => 1 + i * 0.5); // Linear increasing weights
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+    let avgX = 0;
+    let avgY = 0;
+    let avgRadius = 0;
+
+    for (let i = 0; i < detections.length; i++) {
+      const weight = weights[i] / totalWeight;
+      avgX += detections[i].centerX * weight;
+      avgY += detections[i].centerY * weight;
+      avgRadius += detections[i].radius * weight;
+    }
+
+    return {
+      centerX: Math.round(avgX),
+      centerY: Math.round(avgY),
+      radius: Math.round(avgRadius),
+    };
+  };
+
   const detectDartboard = (frame: ImageData): DartboardDetection | null => {
     const data = frame.data;
     const width = frame.width;
     const height = frame.height;
 
-    // Finde das Zentrum mit höchstem Kantenkontrast
-    let highestEdgeScore = 0;
+    // Versuche zuerst Kanten-basierte Erkennung
+    const edgeDetection = detectDartboardByEdges(data, width, height);
+    if (edgeDetection) {
+      return edgeDetection;
+    }
+
+    // Fallback: Dartscheibe ist wahrscheinlich in der Bildmitte
+    // Das ist eine gute Annahme, wenn der Benutzer die Scheibe zentriert
+    return {
+      centerX: width / 2,
+      centerY: height / 2,
+      radius: Math.min(width, height) * 0.28,
+    };
+  };
+
+  const detectDartboardByEdges = (data: Uint8ClampedArray, width: number, height: number): DartboardDetection | null => {
+    // Erstelle ein Kantenbild für bessere Dartscheiben-Erkennung
+    const edgeMap = new Uint8ClampedArray(width * height);
+
+    // Sobel Edge Detection - findet Kanten
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        // X-Gradient
+        const gx =
+          -getPixelBrightness(data, x - 1, y - 1, width) * 1 +
+          -getPixelBrightness(data, x - 1, y, width) * 2 +
+          -getPixelBrightness(data, x - 1, y + 1, width) * 1 +
+          getPixelBrightness(data, x + 1, y - 1, width) * 1 +
+          getPixelBrightness(data, x + 1, y, width) * 2 +
+          getPixelBrightness(data, x + 1, y + 1, width) * 1;
+
+        // Y-Gradient
+        const gy =
+          -getPixelBrightness(data, x - 1, y - 1, width) * 1 +
+          -getPixelBrightness(data, x, y - 1, width) * 2 +
+          -getPixelBrightness(data, x + 1, y - 1, width) * 1 +
+          getPixelBrightness(data, x - 1, y + 1, width) * 1 +
+          getPixelBrightness(data, x, y + 1, width) * 2 +
+          getPixelBrightness(data, x + 1, y + 1, width) * 1;
+
+        const magnitude = Math.sqrt(gx * gx + gy * gy);
+        edgeMap[y * width + x] = Math.min(255, magnitude);
+      }
+    }
+
+    // Finde die beste Position für Dartscheibe (höchste Kantendichte)
+    let bestScore = 0;
     let bestCenterX = width / 2;
     let bestCenterY = height / 2;
 
-    // Sample-Punkte reduzieren für Performance
-    const stepSize = 20;
+    // Suche mit größeren Steps für Performance
+    const stepSize = 60;
+
     for (let y = stepSize; y < height - stepSize; y += stepSize) {
       for (let x = stepSize; x < width - stepSize; x += stepSize) {
+        // Teste verschiedene Radii um diese Position und addiere alle Kantenpunkte
         let edgeScore = 0;
-
-        // Prüfe Kontraste in konzentrischen Kreisen um diesen Punkt
-        for (let r = 20; r < 150; r += 20) {
-          const pointsOnCircle = 8;
-          for (let i = 0; i < pointsOnCircle; i++) {
-            const angle = (i / pointsOnCircle) * Math.PI * 2;
+        
+        // Prüfe alle Punkte auf konzentrischen Kreisen im Dartscheiben-Bereich
+        for (let r = 40; r < 200; r += 5) {
+          const pointsPerCircle = Math.max(8, Math.floor(r / 10));
+          
+          for (let i = 0; i < pointsPerCircle; i++) {
+            const angle = (i / pointsPerCircle) * Math.PI * 2;
             const px = Math.round(x + Math.cos(angle) * r);
             const py = Math.round(y + Math.sin(angle) * r);
 
             if (px >= 0 && px < width && py >= 0 && py < height) {
-              const idx = (py * width + px) * 4;
-              const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-              edgeScore += Math.abs(brightness - 127); // Je mehr vom Durchschnitt, desto besser
+              edgeScore += edgeMap[py * width + px];
             }
           }
         }
 
-        if (edgeScore > highestEdgeScore) {
-          highestEdgeScore = edgeScore;
+        // Bevorzuge Positionen nah bei der Bildmitte
+        const centerDistancePenalty = Math.hypot(x - width / 2, y - height / 2) * 0.15;
+        const finalScore = edgeScore - centerDistancePenalty;
+
+        if (finalScore > bestScore) {
+          bestScore = finalScore;
           bestCenterX = x;
           bestCenterY = y;
         }
       }
     }
 
-    // Dartscheibe Radius schätzen (ca. 1/4 der Bildgröße)
-    const estimatedRadius = Math.min(width, height) * 0.25;
+    // Nur erkannte Dartscheibe akzeptieren wenn Score hoch genug ist
+    if (bestScore < 100) {
+      return null;
+    }
+
+    // Berechne Radius basierend auf Kantenerkennung an dieser Position
+    const estimatedRadius = estimateDartboardRadius(edgeMap, width, height, bestCenterX, bestCenterY);
 
     return {
       centerX: bestCenterX,
       centerY: bestCenterY,
       radius: estimatedRadius,
     };
+  };
+
+  const estimateDartboardRadius = (edgeMap: Uint8ClampedArray, width: number, height: number, centerX: number, centerY: number): number => {
+    // Finde den Radius indem wir nach der stärksten Kantendichte auf verschiedenen Radii suchen
+    let maxEdgeDensity = 0;
+    let bestRadius = 120;
+
+    // Teste verschiedene Radii
+    for (let r = 40; r < 200; r += 5) {
+      let edgeDensity = 0;
+      const pointsPerCircle = 32;
+
+      // Sammle alle Kantenpunkte auf diesem Radius
+      for (let i = 0; i < pointsPerCircle; i++) {
+        const angle = (i / pointsPerCircle) * Math.PI * 2;
+        const px = Math.round(centerX + Math.cos(angle) * r);
+        const py = Math.round(centerY + Math.sin(angle) * r);
+
+        if (px >= 0 && px < width && py >= 0 && py < height) {
+          edgeDensity += edgeMap[py * width + px];
+        }
+      }
+
+      // Normalisiere auf Durchschnitt pro Punkt
+      edgeDensity = edgeDensity / pointsPerCircle;
+
+      // Der beste Radius hat die höchste Kantendichte
+      if (edgeDensity > maxEdgeDensity) {
+        maxEdgeDensity = edgeDensity;
+        bestRadius = r;
+      }
+    }
+
+    // Stelle sicher dass der Radius sinnvoll ist
+    return Math.max(60, Math.min(180, bestRadius));
   };
 
   const detectMotionArea = (prevFrame: ImageData, currFrame: ImageData, dartboard: DartboardDetection) => {
