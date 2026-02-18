@@ -62,41 +62,49 @@ function Darts501Game() {
     recordHit(hitData);
   };
 
-  const getScoreStatus = () => {
-    if (dartsState.gamePhase === 'ended') return '🎉 WINNER!';
-    if (currentPlayer.turnBusted) return `❌ BUST (${currentPlayer.scoreAtTurnStart} → revert)`;
-    return `📍 ${currentPlayer.score}`;
-  };
-
-  const getInstructions = () => {
-    if (dartsState.gamePhase === 'ended') {
-      return 'Game Won!';
-    }
-    if (currentPlayer.turnBusted) {
-      return `❌ Bust! Finish the turn (${currentPlayer.shots}/3)`;
-    }
-    if (currentPlayer.shots === 3) {
-      return `Points: ${currentPlayer.score} - Next player`;
-    }
-    return `Points left: ${currentPlayer.score}`;
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-dark via-blue-900 to-dark p-4">
       <div className="max-w-7xl mx-auto">
-        {/* Header with Score */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-accent">🎯 501 Darts</h1>
-            <p className="text-xl font-bold text-white mt-2">{currentPlayer.name}: {getScoreStatus()}</p>
-            <p className="text-gray-300 mt-1">{getInstructions()}</p>
-          </div>
+        {/* Header */}
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold text-accent">🎯 501 Darts</h1>
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition"
           >
             {soundEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}
           </button>
+        </div>
+
+        {/* Big Score Display */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          {dartsState.players.map((player, index) => (
+            <div
+              key={player.id}
+              className={`rounded-xl p-4 text-center transition-all ${
+                index === dartsState.currentPlayerIndex
+                  ? 'bg-gradient-to-r from-blue-600 to-purple-600 ring-2 ring-yellow-400 scale-105'
+                  : 'bg-white/10'
+              }`}
+            >
+              <p className={`text-sm font-medium mb-1 ${
+                index === dartsState.currentPlayerIndex ? 'text-yellow-200' : 'text-gray-400'
+              }`}>
+                {player.name}
+                {index === dartsState.currentPlayerIndex && ' 🎯'}
+              </p>
+              <p className={`font-black ${
+                index === dartsState.currentPlayerIndex 
+                  ? 'text-5xl text-white' 
+                  : 'text-4xl text-gray-300'
+              }`}>
+                {player.score}
+              </p>
+              {index === dartsState.currentPlayerIndex && player.turnBusted && (
+                <p className="text-red-300 text-xs mt-1 font-bold">❌ BUST!</p>
+              )}
+            </div>
+          ))}
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
