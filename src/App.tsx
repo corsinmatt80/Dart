@@ -11,7 +11,15 @@ function App() {
   const { currentGame, players, recordHit } = useAppStore();
 
   // Prüfe ob Mobile Camera Seite angefordert wird
-  const pathname = window.location.pathname.toLowerCase();
+  let pathname = window.location.pathname.toLowerCase();
+  
+  // Falls von 404.html umgeleitet, prüfe sessionStorage
+  const redirectPath = sessionStorage.getItem('redirect_path');
+  if (redirectPath) {
+    pathname = redirectPath.toLowerCase();
+    sessionStorage.removeItem('redirect_path');
+  }
+  
   const hash = window.location.hash.toLowerCase(); 
   
   const isMobileCamera = 
