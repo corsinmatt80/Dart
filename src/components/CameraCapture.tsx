@@ -3,10 +3,11 @@ import { Camera, X } from 'lucide-react';
 
 interface CameraCaptureProps {
   onHit: (hitData: { x: number; y: number; value: number; multiplier: number }) => void;
+  onBack?: () => void;
   disabled?: boolean;
 }
 
-function CameraCapture({ onHit, disabled = false }: CameraCaptureProps) {
+function CameraCapture({ onHit, onBack, disabled = false }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isActive, setIsActive] = useState(false);
@@ -236,7 +237,10 @@ function CameraCapture({ onHit, disabled = false }: CameraCaptureProps) {
           )}
 
           <button
-            onClick={() => setIsActive(false)}
+            onClick={() => {
+              setIsActive(false);
+              if (onBack) setTimeout(onBack, 100);
+            }}
             className="absolute top-4 right-4 p-2 bg-red-600 hover:bg-red-700 rounded-lg text-white"
           >
             <X size={20} />

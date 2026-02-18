@@ -14,24 +14,41 @@ function ScoreBoard({ gameState, gameType, onReset }: ScoreBoardProps) {
   return (
     <div className="space-y-4">
       {/* Current Player Info */}
-      <div className="bg-gradient-to-r from-primary to-accent rounded-lg p-6 text-white">
+      <div className={`rounded-lg p-6 text-white transition ${
+        currentPlayer?.killer
+          ? 'bg-gradient-to-r from-red-600 to-orange-600 ring-2 ring-yellow-400 shadow-lg shadow-red-500'
+          : 'bg-gradient-to-r from-primary to-accent'
+      }`}>
         <p className="text-sm text-gray-200 mb-1">Current Player</p>
-        <h2 className="text-3xl font-bold mb-2">{currentPlayer?.name}</h2>
+        <h2 className="text-3xl font-bold mb-4">{currentPlayer?.name}</h2>
         
         {gameType === 'killer' && (
-          <div className="flex gap-4">
-            <div>
-              <p className="text-xs text-gray-300">Target Number</p>
-              <p className="text-2xl font-bold">{currentPlayer?.randomNumber}</p>
+          <div className="space-y-4">
+            {/* Target Number - Large and Prominent */}
+            <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 border-2 border-white/50">
+              <p className="text-xs text-gray-200 mb-1 font-bold">TARGET NUMBER</p>
+              <p className="text-6xl font-black text-center">{currentPlayer?.randomNumber}</p>
             </div>
-            <div>
-              <p className="text-xs text-gray-300">Hits</p>
-              <p className="text-2xl font-bold">{currentPlayer?.hits}/3</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-300">Status</p>
-              <p className="text-xl font-bold">{currentPlayer?.killer ? '🔥 KILLER' : 'Building'}</p>
-            </div>
+
+            {/* Status */}
+            {currentPlayer?.killer ? (
+              <div className="bg-yellow-400/20 border-2 border-yellow-400 rounded-lg p-4 text-center">
+                <p className="text-xs text-yellow-200 font-bold uppercase mb-1">Status</p>
+                <p className="text-3xl font-black text-yellow-100">🔥 KILLER 🔥</p>
+                <p className="text-xs text-yellow-200 mt-2">Hunting other players...</p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-xs text-gray-200 font-bold mb-2">Progress to Killer</p>
+                <div className="w-full bg-white/20 rounded-full h-3 border border-white/40">
+                  <div
+                    className="bg-gradient-to-r from-blue-400 to-purple-500 h-3 rounded-full transition-all duration-300"
+                    style={{ width: `${(currentPlayer?.hits / 3) * 100}%` }}
+                  />
+                </div>
+                <p className="text-center text-sm font-bold mt-2">{currentPlayer?.hits} / 3 hits</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -51,35 +68,44 @@ function ScoreBoard({ gameState, gameType, onReset }: ScoreBoardProps) {
 
       {/* Players List */}
       <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-        <h3 className="text-white font-bold mb-3 text-sm">Players</h3>
+        <h3 className="text-white font-bold mb-3 text-sm">PLAYERS</h3>
         <div className="space-y-2">
           {gameState?.players?.map((player: any, idx: number) => (
             <div
               key={player.id}
-              className={`p-3 rounded-lg transition ${
+              className={`p-3 rounded-lg transition border-l-4 ${
                 idx === gameState.currentPlayerIndex
-                  ? 'bg-accent/30 border-l-4 border-accent'
-                  : 'bg-white/5'
-              } ${player.eliminated ? 'opacity-50 line-through' : ''}`}
+                  ? 'bg-accent/30 border-accent'
+                  : player.killer
+                  ? 'bg-red-900/20 border-red-500'
+                  : 'bg-white/5 border-transparent'
+              } ${player.eliminated ? 'opacity-40 line-through' : ''}`}
             >
-              <div className="flex justify-between items-center">
-                <span className="text-white font-medium">{player.name}</span>
-                {gameType === 'killer' && (
-                  <div className="flex gap-2 text-sm">
-                    <span className="text-gray-300">#{player.randomNumber}</span>
-                    <span className={player.killer ? 'text-red-400 font-bold' : 'text-gray-400'}>
-                      {player.hits}/3 {player.killer ? '⚡' : ''}
-                    </span>
-                  </div>
-                )}
-                {gameType === 'darts501' && (
-                  <span className={`font-bold ${
-                    player.score === 0 ? 'text-success' : 'text-gray-300'
-                  }`}>
-                    {player.score}
-                  </span>
-                )}
+              <div className="flex justify-between items-center mb-2">
+                <span className={`font-bold ${
+                  player.killer ? 'text-red-400' : 'text-white'
+                }`}>
+                  {player.name}
+                  {player.killer && ' 🔥'}
+                  {player.eliminated && ' ❌'}
+                </span>
+                <span className="text-lg font-black bg-white/20 px-3 py-1 rounded">
+                  #{player.randomNumber}
+                </span>
               </div>
+              
+              {gameType === 'killer' && (
+                <div className="w-full bg-white/20 rounded-full h-2 border border-white/30">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      player.killer
+                        ? 'bg-gradient-to-r from-red-500 to-orange-500'
+                        : 'bg-gradient-to-r from-blue-400 to-purple-500'
+                    }`}
+                    style={{ width: `${(player.hits / 3) * 100}%` }}
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>

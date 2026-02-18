@@ -28,6 +28,7 @@ interface AppStore {
 
   // History for undo
   history: GameState[];
+  initialGameState: GameState;
   undo(): void;
 }
 
@@ -35,6 +36,7 @@ export const useAppStore = create<AppStore>((set) => ({
   currentGame: null,
   players: [],
   gameState: null,
+  initialGameState: null,
   inputMode: 'manual',
   history: [],
 
@@ -55,6 +57,7 @@ export const useAppStore = create<AppStore>((set) => ({
       currentGame: game,
       players,
       gameState,
+      initialGameState: JSON.parse(JSON.stringify(gameState)),
       history: [],
     });
   },
@@ -101,7 +104,7 @@ export const useAppStore = create<AppStore>((set) => ({
       return { gameState: newState };
     }),
 
-  resetGame: () => set({ currentGame: null, gameState: null, players: [], history: [] }),
+  resetGame: () => set({ currentGame: null, gameState: null, initialGameState: null, players: [], history: [] }),
 
   setInputMode: (mode) => set({ inputMode: mode }),
 
@@ -109,8 +112,12 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => {
       if (state.history.length === 0) return state;
 
+      // Hole den previousState BEVOR die history gekürzt wird
+      const previousState = state.history[state.history.length - 1];
+      // DANN kürze die history
       const newHistory = state.history.slice(0, -1);
-      const previousState = newHistory[newHistory.length - 1] || null;
+
+      if (!previousState) return state;
 
       return {
         gameState: previousState,
