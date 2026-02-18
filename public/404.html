@@ -3,17 +3,12 @@
   <head>
     <meta charset="utf-8">
     <title>Dart Game Hub</title>
-    <script>
-      // Single Page App rewrite for GitHub Pages
-      // Redirect /path to /#/path
-      var l = window.location;
-      l.replace(
-        l.protocol + '//' + l.hostname + 
-        (l.port ? ':' + l.port : '') + 
-        '/Dart/#' + l.pathname.replace(/\/$/, '') + (l.search || '')
-      );
-    </script>
   </head>
   <body>
+    <script>
+      // For GitHub Pages SPA: redirect to root
+      // Use hash-based routing: /Dart/#/camera instead of /Dart/camera
+      window.location.href = '/Dart/';
+    </script>
   </body>
 </html>

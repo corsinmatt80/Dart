@@ -10,14 +10,10 @@ import './styles/global.css';
 function App() {
   const { currentGame, players, recordHit } = useAppStore();
 
-  // Prüfe ob Mobile Camera Seite angefordert wird (unterstützt Hash-Routing für GitHub Pages)
+  // Prüfe ob Mobile Camera Seite angefordert wird (Hash-basiert für GitHub Pages)
   const hash = window.location.hash.toLowerCase();
-  const pathname = window.location.pathname.toLowerCase();
   
-  const isMobileCamera = 
-    hash.includes('/camera') || 
-    hash === '#/camera' ||
-    pathname.includes('/camera');
+  const isMobileCamera = hash.includes('#camera') || hash === '#/camera';
 
   useEffect(() => {
     // Höre auf Treffer vom Handy (wenn Desktop offen)
