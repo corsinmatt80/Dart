@@ -4,8 +4,7 @@ import PlayerSetup from './components/PlayerSetup';
 import GameMenu from './components/GameMenu';
 import KillerGame from './games/killer/KillerGame';
 import Darts501Game from './games/darts501/Darts501Game';
-import MobileCameraV2 from './pages/MobileCameraV2';
-import MobileCameraV3 from './pages/MobileCameraV3';
+import MobileCamera from './pages/MobileCameraV3';
 import './styles/global.css';
 
 function App() {
@@ -13,11 +12,7 @@ function App() {
 
   // Check if Mobile Camera page is requested (hash-based for GitHub Pages)
   const hash = window.location.hash.toLowerCase();
-  
-  // V3 camera (new ellipse-based detection) - use #camera3 or #camerav3
-  const isMobileCameraV3 = hash.includes('#camera3') || hash.includes('#camerav3');
-  // V2 camera (original with ArUco) - use #camera or #camera2
-  const isMobileCameraV2 = (hash.includes('#camera') || hash === '#/camera') && !isMobileCameraV3;
+  const isMobileCamera = hash.includes('#camera') || hash === '#/camera';
 
   useEffect(() => {
     // Listen for hits from smartphone (if desktop is open)
@@ -56,11 +51,8 @@ function App() {
   }, [recordHit]);
 
   // Show mobile camera if requested
-  if (isMobileCameraV3) {
-    return <MobileCameraV3 />;
-  }
-  if (isMobileCameraV2) {
-    return <MobileCameraV2 />;
+  if (isMobileCamera) {
+    return <MobileCamera />;
   }
 
   // Show player setup if no players

@@ -10,7 +10,6 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "js-aruco": "^0.1.0",
     "lucide-react": "^0.292.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
