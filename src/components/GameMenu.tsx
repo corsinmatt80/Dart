@@ -1,56 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useAppStore } from '../store/appStore';
-import { Zap, Target, RotateCcw, Smartphone } from 'lucide-react';
+import { Zap, Target, RotateCcw, Camera, ExternalLink, Printer } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 function GameMenu() {
   const { players, initializeGame, resetGame } = useAppStore();
-  const [localIp, setLocalIp] = useState<string>('localhost');
-
-  useEffect(() => {
-    // Simple IP detection without WebRTC
-    const getLocalIp = () => {
-      try {
-        // Fallback: try to determine from window.location
-        const hostname = window.location.hostname;
-        if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
-          setLocalIp(hostname);
-        } else {
-          // Try WebRTC only as backup
-          const rtcPeerConnection = 
-            window.RTCPeerConnection ||
-            (window as any).webkitRTCPeerConnection ||
-            (window as any).mozRTCPeerConnection;
-
-          if (!rtcPeerConnection) {
-            setLocalIp('192.168.1.x');
-            return;
-          }
-
-          const pc = new rtcPeerConnection({ iceServers: [] });
-          pc.createDataChannel('');
-
-          pc.onicecandidate = (ice: any) => {
-            if (!ice || !ice.candidate) return;
-            const ipRegex = /([0-9]{1,3}(\.[0-9]{1,3}){3})/;
-            const ipAddress = ipRegex.exec(ice.candidate.candidate)?.[1];
-            if (ipAddress && !ipAddress.startsWith('127.')) {
-              setLocalIp(ipAddress);
-              pc.close();
-            }
-          };
-
-          pc.createOffer().then((offer: any) => {
-            pc.setLocalDescription(offer).catch(() => {});
-          }).catch(() => {});
-        }
-      } catch (err) {
-        console.error('IP detection error:', err);
-        setLocalIp('192.168.1.x');
-      }
-    };
-
-    getLocalIp();
-  }, []);
+  
+  const cameraUrl = 'https://corsinmatt80.github.io/Dart/#camera';
 
   const selectGame = (game: 'killer' | 'darts501') => {
     initializeGame(game, players);
@@ -62,18 +18,56 @@ function GameMenu() {
         <h1 className="text-4xl font-bold text-center mb-2 text-accent">Game Selection</h1>
         <p className="text-center text-gray-400 mb-12">Choose your Dart game</p>
 
-        {/* Mobile Camera Info */}
-        <div className="bg-blue-600/30 border border-blue-500 rounded-lg p-4 mb-8">
-          <div className="flex items-start gap-3">
-            <Smartphone className="text-blue-400 mt-1" size={20} />
-            <div className="flex-1">
-              <h3 className="text-white font-bold mb-2">📱 Connect with smartphone</h3>
-              <p className="text-blue-200 text-sm mb-3">Open this URL on your smartphone:</p>
+        {/* Mobile Camera Info with QR Code */}
+        <div className="bg-gradient-to-r from-blue-600/30 to-purple-600/30 border border-blue-500/50 rounded-xl p-5 mb-8 shadow-lg">
+          <div className="flex items-center gap-2 mb-4">
+            <Camera className="text-blue-400" size={24} />
+            <h3 className="text-white font-bold text-lg">Smartphone-Kamera verbinden</h3>
+          </div>
+          
+          <div className="flex flex-col md:flex-row gap-5 items-center">
+            {/* QR Code */}
+            <div className="bg-white p-3 rounded-xl shadow-xl">
+              <QRCodeSVG 
+                value={cameraUrl}
+                size={140}
+                level="H"
+                includeMargin={false}
+                bgColor="#ffffff"
+                fgColor="#1e293b"
+              />
+            </div>
+            
+            {/* Instructions */}
+            <div className="flex-1 text-center md:text-left">
+              <p className="text-blue-200 mb-3">
+                <span className="text-2xl mr-2">📱</span>
+                Scanne den QR-Code mit deinem Handy oder öffne den Link:
+              </p>
               
-              <code className="bg-blue-900/50 px-3 py-2 rounded text-blue-100 text-xs block break-all font-mono">
-                https://corsinmatt80.github.io/Dart/#/camera
-              </code>
-              <p className="text-blue-200 text-xs mt-3">Your smartphone will film the dartboard and automatically detect hits!</p>
+              <a 
+                href={cameraUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition font-medium text-sm mb-2"
+              >
+                <ExternalLink size={16} />
+                Kamera öffnen
+              </a>
+              
+              <a 
+                href="https://corsinmatt80.github.io/Dart/aruco-markers.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition font-medium text-sm mb-3 ml-2"
+              >
+                <Printer size={16} />
+                ArUco Marker drucken
+              </a>
+              
+              <p className="text-blue-300/70 text-xs">
+                Platziere die gedruckten Marker um die Dartscheibe für bessere Erkennung!
+              </p>
             </div>
           </div>
         </div>
