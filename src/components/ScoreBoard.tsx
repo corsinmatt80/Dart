@@ -1,15 +1,16 @@
 import React from 'react';
 import { KillerGameState } from '../games/killer/types';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, RefreshCw } from 'lucide-react';
 
 interface ScoreBoardProps {
   gameState: KillerGameState | any;
   gameType: 'killer' | 'darts501';
   onReset: () => void;
   onNewLeg?: () => void;
+  onRestart?: () => void;
 }
 
-function ScoreBoard({ gameState, gameType, onReset, onNewLeg }: ScoreBoardProps) {
+function ScoreBoard({ gameState, gameType, onReset, onNewLeg, onRestart }: ScoreBoardProps) {
   const currentPlayer = gameState?.players?.[gameState?.currentPlayerIndex];
 
   return (
@@ -33,9 +34,9 @@ function ScoreBoard({ gameState, gameType, onReset, onNewLeg }: ScoreBoardProps)
 
             {/* Status */}
             {currentPlayer?.killer ? (
-              <div className="bg-yellow-400/20 border-2 border-yellow-400 rounded-lg p-4 text-center">
+              <div className="bg-yellow-400/30 border-2 border-yellow-400 rounded-lg p-4 text-center shadow-lg shadow-yellow-500/50 animate-pulse">
                 <p className="text-xs text-yellow-200 font-bold uppercase mb-1">Status</p>
-                <p className="text-3xl font-black text-yellow-100">🔥 KILLER 🔥</p>
+                <p className="text-3xl font-black text-yellow-300">💀 KILLER 💀</p>
                 <p className="text-xs text-yellow-200 mt-2">Hunting other players...</p>
               </div>
             ) : (
@@ -78,16 +79,16 @@ function ScoreBoard({ gameState, gameType, onReset, onNewLeg }: ScoreBoardProps)
                 idx === gameState.currentPlayerIndex
                   ? 'bg-accent/30 border-accent'
                   : player.killer
-                  ? 'bg-red-900/20 border-red-500'
+                  ? 'bg-yellow-900/30 border-yellow-400 shadow-md shadow-yellow-500/30'
                   : 'bg-white/5 border-transparent'
               } ${player.eliminated ? 'opacity-40 line-through' : ''}`}
             >
               <div className="flex justify-between items-center mb-2">
                 <span className={`font-bold ${
-                  player.killer ? 'text-red-400' : 'text-white'
+                  player.killer ? 'text-yellow-400' : 'text-white'
                 }`}>
                   {player.name}
-                  {player.killer && ' 🔥'}
+                  {player.killer && ' 💀'}
                   {player.eliminated && ' ❌'}
                 </span>
                 <span className="text-lg font-black bg-white/20 px-3 py-1 rounded">
@@ -100,7 +101,7 @@ function ScoreBoard({ gameState, gameType, onReset, onNewLeg }: ScoreBoardProps)
                   <div
                     className={`h-2 rounded-full transition-all duration-300 ${
                       player.killer
-                        ? 'bg-gradient-to-r from-red-500 to-orange-500'
+                        ? 'bg-gradient-to-r from-yellow-400 to-amber-500'
                         : 'bg-gradient-to-r from-blue-400 to-purple-500'
                     }`}
                     style={{ width: `${(player.hits / 3) * 100}%` }}
@@ -124,11 +125,19 @@ function ScoreBoard({ gameState, gameType, onReset, onNewLeg }: ScoreBoardProps)
               🎯 Neues Leg starten
             </button>
           )}
+          {onRestart && (
+            <button
+              onClick={onRestart}
+              className="mt-2 w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg font-bold transition flex items-center justify-center gap-2"
+            >
+              <RefreshCw size={18} /> Play Again
+            </button>
+          )}
           <button
             onClick={onReset}
             className="mt-2 w-full px-4 py-2 bg-success hover:bg-success/80 text-white rounded-lg font-bold transition"
           >
-            Neues Match (Score zurücksetzen)
+            Back to Menu
           </button>
         </div>
       )}

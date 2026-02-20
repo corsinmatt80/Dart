@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
+import { navigateToMenu } from '../../App';
 import { LimboGameState } from './types';
 import DartInput from '../../components/DartInput';
-import { Volume2, VolumeX, RotateCcw, Heart, Skull, Target, TrendingDown } from 'lucide-react';
+import { Volume2, VolumeX, RotateCcw, Heart, Skull, Target, TrendingDown, RefreshCw } from 'lucide-react';
 
 function LimboGame() {
-  const { gameState, recordHit, resetGame, undo, history } = useAppStore();
+  const { gameState, recordHit, undo, history, restartGame } = useAppStore();
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   const limboState = gameState as LimboGameState;
@@ -167,10 +168,16 @@ function LimboGame() {
                 Limbo Master - Last one standing!
               </p>
               <button
-                onClick={resetGame}
-                className="w-full px-6 py-3 bg-white text-purple-700 rounded-xl font-bold hover:bg-purple-100 transition flex items-center justify-center gap-2"
+                onClick={restartGame}
+                className="w-full px-6 py-3 bg-white text-purple-700 rounded-xl font-bold hover:bg-purple-100 transition flex items-center justify-center gap-2 mb-2"
               >
-                <RotateCcw size={20} /> New Game
+                <RefreshCw size={20} /> Play Again
+              </button>
+              <button
+                onClick={navigateToMenu}
+                className="w-full px-6 py-3 bg-white/20 text-white rounded-xl font-bold hover:bg-white/30 transition flex items-center justify-center gap-2"
+              >
+                <RotateCcw size={20} /> Back to Menu
               </button>
             </div>
           </div>
@@ -209,7 +216,7 @@ function LimboGame() {
             </div>
 
             <button
-              onClick={resetGame}
+              onClick={navigateToMenu}
               className="w-full px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-bold text-white transition flex items-center justify-center gap-2 border border-white/30"
             >
               <RotateCcw size={18} /> Back to Menu

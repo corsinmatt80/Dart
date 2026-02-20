@@ -1,12 +1,13 @@
 import React from 'react';
 import { useAppStore } from '../../store/appStore';
+import { navigateToMenu } from '../../App';
 import { KillerGameState } from './types';
 import DartInput from '../../components/DartInput';
 import ScoreBoard from '../../components/ScoreBoard';
 import { Volume2, VolumeX } from 'lucide-react';
 
 function KillerGame() {
-  const { gameState, recordHit, endTurn, resetGame, undo, history } = useAppStore();
+  const { gameState, recordHit, endTurn, undo, history, restartGame } = useAppStore();
   const [soundEnabled, setSoundEnabled] = React.useState(true);
   const [inputMode, setInputMode] = React.useState<'camera' | 'manual'>('manual');
 
@@ -64,11 +65,11 @@ function KillerGame() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-dark via-blue-900 to-dark p-4">
+    <div className="min-h-screen bg-gradient-to-br from-dark via-red-900 to-dark p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-accent">⚡ Killer Darts</h1>
+          <h1 className="text-3xl font-bold text-red-400">💀 Killer Darts</h1>
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition"
@@ -117,25 +118,6 @@ function KillerGame() {
               ))}
             </div>
 
-            {/* Game Instructions */}
-            <div className={`mt-6 border rounded-lg p-4 ${
-              currentPlayer.shots >= 3
-                ? 'bg-red-900/30 border-red-500/50'
-                : 'bg-blue-900/30 border-blue-500/50'
-            }`}>
-              <p className={`text-sm ${
-                currentPlayer.shots >= 3
-                  ? 'text-red-200 font-bold'
-                  : 'text-blue-200'
-              }`}>
-                {currentPlayer.shots >= 3
-                  ? `⚠️ Turn is complete! (3/3 shots used) - End your turn or undo.`
-                  : currentPlayer.killer
-                  ? `🎯 You are the KILLER! Hunt the other players. Hit their numbers to reduce their hits. Hit them at 0 hits to eliminate them.`
-                  : `🎯 Hit your number (#${currentPlayer.randomNumber}) ${3 - currentPlayer.hits} more times to become the KILLER!`}
-              </p>
-            </div>
-
             {/* Shots Counter and Controls */}
             <div className="mt-6 space-y-3">
               <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
@@ -161,7 +143,7 @@ function KillerGame() {
 
           {/* Scoreboard */}
           <div>
-            <ScoreBoard gameState={killerState} gameType="killer" onReset={resetGame} />
+            <ScoreBoard gameState={killerState} gameType="killer" onReset={navigateToMenu} onRestart={restartGame} />
           </div>
         </div>
       </div>

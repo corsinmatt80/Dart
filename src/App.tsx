@@ -3,6 +3,7 @@ import { useAppStore } from './store/appStore';
 import PlayerSetup from './components/PlayerSetup';
 import GameMenu from './components/GameMenu';
 import KillerGame from './games/killer/KillerGame';
+import KillerSetup from './games/killer/KillerSetup';
 import Darts501Game from './games/darts501/Darts501Game';
 import Darts501Setup from './games/darts501/Darts501Setup';
 import CricketGame from './games/cricket/CricketGame';
@@ -12,12 +13,53 @@ import LimboSetup from './games/limbo/LimboSetup';
 import MobileCamera from './pages/MobileCameraV3';
 import './styles/global.css';
 
-function App() {
-  const { currentGame, gameState, players, recordHit, initializeDarts501, initializeCricket, initializeLimbo, setCurrentGame } = useAppStore();
+// Helper to get route from hash
+function getRouteFromHash(): string {
+  const hash = window.location.hash.toLowerCase().replace('#', '').replace('/', '');
+  return hash;
+}
 
-  // Check if Mobile Camera page is requested (hash-based for GitHub Pages)
-  const hash = window.location.hash.toLowerCase();
-  const isMobileCamera = hash.includes('#camera') || hash === '#/camera';
+// Helper to navigate
+export function navigateTo(route: string) {
+  window.location.hash = `#/${route}`;
+}
+
+export function navigateToMenu() {
+  window.location.hash = '';
+}
+
+function App() {
+  const { currentGame, gameState, players, recordHit, initializeDarts501, initializeCricket, initializeLimbo, setCurrentGame, initializeGame, resetGame } = useAppStore();
+
+  // Get route from hash
+  const route = getRouteFromHash();
+  const isMobileCamera = route === 'camera';
+
+  // Sync hash with game state
+  useEffect(() => {
+    const handleHashChange = () => {
+      const newRoute = getRouteFromHash();
+      
+      if (newRoute === 'killer' && currentGame !== 'killer') {
+        setCurrentGame('killer');
+      } else if (newRoute === 'darts501' && currentGame !== 'darts501') {
+        setCurrentGame('darts501');
+      } else if (newRoute === 'cricket' && currentGame !== 'cricket') {
+        setCurrentGame('cricket');
+      } else if (newRoute === 'limbo' && currentGame !== 'limbo') {
+        setCurrentGame('limbo');
+      } else if (newRoute === '' && currentGame !== null) {
+        resetGame();
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    
+    // Check on mount
+    handleHashChange();
+
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [currentGame, players, initializeGame, setCurrentGame, resetGame]);
 
   useEffect(() => {
     // Listen for hits from smartphone (if desktop is open)
@@ -72,6 +114,15 @@ function App() {
 
   // Render selected game
   if (currentGame === 'killer') {
+    // Show setup screen if game not initialized yet
+    if (!gameState) {
+      return (
+        <KillerSetup 
+          onStart={() => initializeGame('killer', players)}
+          onBack={() => navigateToMenu()}
+        />
+      );
+    }
     return <KillerGame />;
   }
 
@@ -81,7 +132,7 @@ function App() {
       return (
         <Darts501Setup 
           onStart={(options) => initializeDarts501(players, options)}
-          onBack={() => setCurrentGame(null as any)}
+          onBack={() => navigateToMenu()}
         />
       );
     }
@@ -94,7 +145,7 @@ function App() {
       return (
         <CricketSetup 
           onStart={() => initializeCricket(players)}
-          onBack={() => setCurrentGame(null as any)}
+          onBack={() => navigateToMenu()}
         />
       );
     }
@@ -107,7 +158,7 @@ function App() {
       return (
         <LimboSetup 
           onStart={(startLimit, lives) => initializeLimbo(players, startLimit, lives)}
-          onBack={() => setCurrentGame(null as any)}
+          onBack={() => navigateToMenu()}
         />
       );
     }

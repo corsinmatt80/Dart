@@ -27,7 +27,10 @@ interface AppStore {
   recordHit(hitData: HitData): void;
   endTurn(): void;
   resetGame(): void;
+  restartGame(): void;
+  clearPlayers(): void;
   startNewLeg(): void;
+  limboOptions: { startLimit: number; lives: number } | null;
 
   // Input mode
   inputMode: InputMode;
@@ -45,6 +48,7 @@ export const useAppStore = create<AppStore>((set) => ({
   gameState: null,
   initialGameState: null,
   darts501Options: null,
+  limboOptions: null,
   inputMode: 'manual',
   history: [],
 
@@ -101,6 +105,7 @@ export const useAppStore = create<AppStore>((set) => ({
       currentGame: 'limbo',
       players,
       gameState,
+      limboOptions: { startLimit, lives },
       initialGameState: JSON.parse(JSON.stringify(gameState)),
       history: [],
     });
@@ -152,7 +157,31 @@ export const useAppStore = create<AppStore>((set) => ({
       return { gameState: newState };
     }),
 
-  resetGame: () => set({ currentGame: null, gameState: null, initialGameState: null, players: [], history: [], darts501Options: null }),
+  resetGame: () => set({ currentGame: null, gameState: null, initialGameState: null, history: [], darts501Options: null, limboOptions: null }),
+
+  clearPlayers: () => set({ currentGame: null, gameState: null, initialGameState: null, players: [], history: [], darts501Options: null, limboOptions: null }),
+
+  restartGame: () => set((state) => {
+    if (!state.currentGame || state.players.length === 0) return state;
+
+    let newGameState: GameState = null;
+
+    if (state.currentGame === 'killer') {
+      newGameState = createInitialKillerState(state.players);
+    } else if (state.currentGame === 'darts501' && state.darts501Options) {
+      newGameState = createInitialDarts501State(state.players, undefined, state.darts501Options);
+    } else if (state.currentGame === 'cricket') {
+      newGameState = createInitialCricketState(state.players);
+    } else if (state.currentGame === 'limbo' && state.limboOptions) {
+      newGameState = createInitialLimboState(state.players, state.limboOptions.startLimit, state.limboOptions.lives);
+    }
+
+    return {
+      gameState: newGameState,
+      initialGameState: JSON.parse(JSON.stringify(newGameState)),
+      history: [],
+    };
+  }),
 
   startNewLeg: () => set((state) => {
     if (!state.gameState || state.currentGame !== 'darts501') return state;

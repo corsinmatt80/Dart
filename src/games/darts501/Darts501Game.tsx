@@ -1,12 +1,13 @@
 import React from 'react';
 import { useAppStore } from '../../store/appStore';
+import { navigateToMenu } from '../../App';
 import { Darts501GameState } from './types';
 import DartInput from '../../components/DartInput';
 import ScoreBoard from '../../components/ScoreBoard';
 import { Volume2, VolumeX } from 'lucide-react';
 
 function Darts501Game() {
-  const { gameState, recordHit, endTurn, resetGame, startNewLeg, undo, history } = useAppStore();
+  const { gameState, recordHit, endTurn, startNewLeg, undo, history, restartGame } = useAppStore();
   const [soundEnabled, setSoundEnabled] = React.useState(true);
   const [inputMode, setInputMode] = React.useState<'camera' | 'manual'>('manual');
 
@@ -193,7 +194,7 @@ function Darts501Game() {
 
           {/* Scoreboard */}
           <div>
-            <ScoreBoard gameState={dartsState} gameType="darts501" onReset={resetGame} onNewLeg={startNewLeg} />
+            <ScoreBoard gameState={dartsState} gameType="darts501" onReset={navigateToMenu} onNewLeg={startNewLeg} onRestart={restartGame} />
           </div>
         </div>
       </div>

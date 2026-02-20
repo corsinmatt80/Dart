@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
-import { Zap, Target, RotateCcw, Smartphone, CircleDot, TrendingDown } from 'lucide-react';
+import { navigateTo } from '../App';
+import { Skull, Target, RotateCcw, Smartphone, CircleDot, TrendingDown } from 'lucide-react';
 
 function GameMenu() {
-  const { players, initializeGame, resetGame, setCurrentGame } = useAppStore();
+  const { players, clearPlayers } = useAppStore();
   const [localIp, setLocalIp] = useState<string>('localhost');
 
   useEffect(() => {
@@ -53,12 +54,7 @@ function GameMenu() {
   }, []);
 
   const selectGame = (game: 'killer' | 'darts501' | 'cricket' | 'limbo') => {
-    if (game === 'darts501' || game === 'cricket' || game === 'limbo') {
-      // For 501, Cricket and Limbo, just set the game - options screen will handle initialization
-      setCurrentGame(game);
-    } else {
-      initializeGame(game, players);
-    }
+    navigateTo(game);
   };
 
   return (
@@ -89,12 +85,12 @@ function GameMenu() {
             onClick={() => selectGame('killer')}
             className="bg-white/10 backdrop-blur-md rounded-lg p-6 cursor-pointer hover:bg-white/20 transition transform hover:scale-105 border border-white/30"
           >
-            <Zap className="text-accent mb-4" size={40} />
+            <Skull className="text-red-500 mb-4" size={40} />
             <h2 className="text-2xl font-bold text-white mb-2">Killer</h2>
             <p className="text-gray-300 mb-4">
               The classic elimination game. Get three on your number, then eliminate opponents.
             </p>
-            <div className="text-accent font-semibold">Click to Play →</div>
+            <div className="text-red-500 font-semibold">Click to Play →</div>
           </div>
 
           {/* 501 Card */}
@@ -138,7 +134,7 @@ function GameMenu() {
         </div>
 
         <button
-          onClick={resetGame}
+          onClick={clearPlayers}
           className="w-full px-6 py-3 bg-white/10 hover:bg-white/20 rounded-lg font-bold text-white transition flex items-center justify-center gap-2 border border-white/30"
         >
           <RotateCcw size={20} /> Change Players

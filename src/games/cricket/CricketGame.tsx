@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
+import { navigateToMenu } from '../../App';
 import { CricketGameState, CRICKET_TARGETS, CricketTarget } from './types';
 import CricketInput from './CricketInput';
-import { Volume2, VolumeX, RotateCcw } from 'lucide-react';
+import { Volume2, VolumeX, RotateCcw, RefreshCw } from 'lucide-react';
 
 // Progress bar component for marks
 function MarkBar({ marks, isCurrentPlayer }: { marks: number; isCurrentPlayer: boolean }) {
@@ -33,7 +34,7 @@ function MarkBar({ marks, isCurrentPlayer }: { marks: number; isCurrentPlayer: b
 }
 
 function CricketGame() {
-  const { gameState, recordHit, resetGame, undo, history } = useAppStore();
+  const { gameState, recordHit, undo, history, restartGame } = useAppStore();
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   if (!gameState || (gameState as CricketGameState).gamePhase !== 'playing' && (gameState as CricketGameState).gamePhase !== 'ended') {
@@ -237,10 +238,16 @@ function CricketGame() {
               </div>
 
               <button
-                onClick={resetGame}
-                className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 rounded-xl font-bold text-white transition flex items-center justify-center gap-2"
+                onClick={restartGame}
+                className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 rounded-xl font-bold text-white transition flex items-center justify-center gap-2 mb-2"
               >
-                <RotateCcw size={20} /> New Game
+                <RefreshCw size={20} /> Play Again
+              </button>
+              <button
+                onClick={navigateToMenu}
+                className="w-full px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl font-bold text-white transition flex items-center justify-center gap-2"
+              >
+                <RotateCcw size={20} /> Back to Menu
               </button>
             </div>
           </div>
@@ -270,7 +277,7 @@ function CricketGame() {
             </div>
 
             <button
-              onClick={resetGame}
+              onClick={navigateToMenu}
               className="w-full px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-bold text-white transition flex items-center justify-center gap-2 border border-white/30"
             >
               <RotateCcw size={18} /> Back to Menu
