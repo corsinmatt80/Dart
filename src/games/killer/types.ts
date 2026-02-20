@@ -28,7 +28,6 @@ export function createInitialKillerState(players: Player[]): KillerGameState {
       hits: 0,
       killer: false,
       shots: 0,
-      eliminated: false,
     })),
     currentPlayerIndex: 0,
     winner: null,
@@ -69,37 +68,25 @@ export function procesKillerHit(
 
   currentPlayer.shots += 1;
 
-  // If not yet killer, try to hit own number to get closer to killer status
-  if (!currentPlayer.killer) {
-    if (hitData.value === currentPlayer.randomNumber) {
-      // Multiplier zählt als Hits! (3x = 3 Hits, 2x = 2 Hits, 1x = 1 Hit)
-      currentPlayer.hits += hitData.multiplier;
-      if (currentPlayer.hits >= 3) {
-        currentPlayer.hits = 3;
-        currentPlayer.killer = true;
-      }
+  // Update hit count
+  if (currentPlayer.hits < 3) {
+    currentPlayer.hits += hitData.multiplier;
+    if (currentPlayer.hits >= 3) {
+      currentPlayer.hits = 3;
+      currentPlayer.killer = true;
     }
-  } else {
-    // If killer, can hunt other players
-    // Find the player with the hit number and reduce their hits
+  }
+
+  // If killer, eliminate other players with this number
+  if (currentPlayer.killer) {
     for (const player of newState.players) {
       if (
         player.randomNumber === hitData.value &&
         player.id !== currentPlayer.id &&
         !player.eliminated
       ) {
-        const hitsBeforeHit = player.hits;
-        
-        // Reduce hits by multiplier (3x hit = reduce by 3, 2x hit = reduce by 2, etc)
-        player.hits = Math.max(0, player.hits - hitData.multiplier);
-        
-        // If hits fall below 3, player loses killer status
-        if (player.hits < 3) {
-          player.killer = false;
-        }
-        
-        // If they were already at 0 and got hit, OR if the damage exceeds their remaining hits, they're eliminated
-        if (hitsBeforeHit === 0 || hitsBeforeHit < hitData.multiplier) {
+        player.hits -= hitData.multiplier;
+        if (player.hits < 0) {
           player.eliminated = true;
         }
         break;

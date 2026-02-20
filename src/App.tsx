@@ -11,12 +11,16 @@ import CricketSetup from './games/cricket/CricketSetup';
 import LimboGame from './games/limbo/LimboGame';
 import LimboSetup from './games/limbo/LimboSetup';
 import MobileCamera from './pages/MobileCameraV3';
+import WebRTCCamera from './pages/WebRTCCamera';
+import ManualWebRTC from './pages/ManualWebRTC';
 import './styles/global.css';
 
-// Helper to get route from hash
+// Helper to get route from hash (only lowercase the route part, not query params)
 function getRouteFromHash(): string {
-  const hash = window.location.hash.toLowerCase().replace('#', '').replace('/', '');
-  return hash;
+  const hash = window.location.hash.replace('#', '').replace('/', '');
+  // Only get the route part (before any query params) and lowercase it
+  const routePart = hash.split('?')[0].toLowerCase();
+  return routePart;
 }
 
 // Helper to navigate
@@ -34,6 +38,8 @@ function App() {
   // Get route from hash
   const route = getRouteFromHash();
   const isMobileCamera = route === 'camera';
+  const isWebRTCCamera = route.startsWith('camera-webrtc');
+  const isManualCamera = route === 'manual-camera';
 
   // Sync hash with game state
   useEffect(() => {
@@ -100,6 +106,16 @@ function App() {
   // Show mobile camera if requested
   if (isMobileCamera) {
     return <MobileCamera />;
+  }
+
+  // Show WebRTC camera (phone side)
+  if (isWebRTCCamera) {
+    return <WebRTCCamera />;
+  }
+
+  // Show manual camera (phone side)
+  if (isManualCamera) {
+    return <ManualWebRTC mode="camera" />;
   }
 
   // Show player setup if no players

@@ -5,42 +5,29 @@ import { CricketGameState, CRICKET_TARGETS, CricketTarget } from './types';
 import CricketInput from './CricketInput';
 import { Volume2, VolumeX, RotateCcw, RefreshCw } from 'lucide-react';
 
-// Progress bar component for marks with vibrant colors
+// Progress bar component for marks
 function MarkBar({ marks, isCurrentPlayer }: { marks: number; isCurrentPlayer: boolean }) {
   const percentage = Math.min((marks / 3) * 100, 100);
   const isClosed = marks >= 3;
   
-  // Different colors based on progress
-  const getBarColor = () => {
-    if (isClosed) {
-      // Knallig neon green when full
-      return 'bg-gradient-to-r from-lime-400 via-green-400 to-emerald-400 shadow-lg shadow-green-500/50';
-    }
-    if (marks === 2) {
-      // Almost there - orange/yellow
-      return 'bg-gradient-to-r from-yellow-400 to-orange-500';
-    }
-    if (marks === 1) {
-      // Started - cyan/blue
-      return 'bg-gradient-to-r from-cyan-400 to-blue-500';
-    }
-    return 'bg-gray-600';
-  };
-  
   return (
     <div className="w-full">
-      <div className={`h-4 rounded-full overflow-hidden ${
-        isClosed 
-          ? 'bg-green-900/50 ring-2 ring-green-400' 
-          : 'bg-white/10'
+      <div className={`h-3 rounded-full overflow-hidden ${
+        isCurrentPlayer ? 'bg-blue-900/50' : 'bg-white/10'
       }`}>
         <div 
-          className={`h-full rounded-full transition-all duration-300 ${getBarColor()}`}
+          className={`h-full rounded-full transition-all duration-300 ${
+            isClosed 
+              ? 'bg-gradient-to-r from-green-400 to-emerald-500' 
+              : isCurrentPlayer 
+                ? 'bg-gradient-to-r from-yellow-400 to-orange-500'
+                : 'bg-gradient-to-r from-blue-400 to-purple-500'
+          }`}
           style={{ width: `${percentage}%` }}
         />
       </div>
       {isClosed && (
-        <div className="text-center text-lime-400 text-xs mt-0.5 font-black animate-pulse drop-shadow-[0_0_8px_rgba(163,230,53,0.8)]">✓ CLOSED</div>
+        <div className="text-center text-green-400 text-xs mt-0.5 font-bold">✓</div>
       )}
     </div>
   );
@@ -50,18 +37,12 @@ function CricketGame() {
   const { gameState, recordHit, undo, history, restartGame } = useAppStore();
   const [soundEnabled, setSoundEnabled] = useState(true);
 
-  if (!gameState || !['playing', 'confirming', 'ended'].includes((gameState as CricketGameState).gamePhase)) {
+  if (!gameState || (gameState as CricketGameState).gamePhase !== 'playing' && (gameState as CricketGameState).gamePhase !== 'ended') {
     return null;
   }
 
   const cricketState = gameState as CricketGameState;
   const currentPlayer = cricketState.players[cricketState.currentPlayerIndex];
-
-  const confirmEndGame = () => {
-    // Set gamePhase to 'ended' by accessing the store directly
-    const newState = { ...cricketState, gamePhase: 'ended' as const };
-    useAppStore.setState({ gameState: newState });
-  };
 
   const handleHit = (hitData: any) => {
     if (soundEnabled) {
@@ -168,7 +149,7 @@ function CricketGame() {
                 {cricketState.players.map((player, idx) => (
                   <div 
                     key={player.id}
-                    className={`px-1 py-1 rounded-lg ${
+                    className={`px-2 py-1 rounded-lg ${
                       idx === cricketState.currentPlayerIndex
                         ? 'bg-blue-600/20'
                         : ''
@@ -204,41 +185,6 @@ function CricketGame() {
             ))}
           </div>
         </div>
-
-        {/* Confirm End Game Modal */}
-        {cricketState.gamePhase === 'confirming' && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-6 w-full max-w-md shadow-2xl border border-white/20">
-              <div className="text-center mb-6">
-                <div className="text-5xl mb-2">🎯</div>
-                <h2 className="text-2xl font-black text-white">Game Finished!</h2>
-                <p className="text-gray-400 text-sm mt-2">
-                  {cricketState.winner?.name} has won!
-                </p>
-              </div>
-              
-              <div className="space-y-3">
-                <button
-                  onClick={undo}
-                  disabled={history.length === 0}
-                  className={`w-full px-6 py-3 rounded-xl font-bold text-white transition flex items-center justify-center gap-2 ${
-                    history.length === 0
-                      ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                      : 'bg-white/20 hover:bg-white/30'
-                  }`}
-                >
-                  <RotateCcw size={20} /> Undo Last Throw
-                </button>
-                <button
-                  onClick={confirmEndGame}
-                  className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 rounded-xl font-bold text-white transition flex items-center justify-center gap-2"
-                >
-                  🏆 Show Leaderboard
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Leaderboard Modal */}
         {cricketState.gamePhase === 'ended' && (() => {
