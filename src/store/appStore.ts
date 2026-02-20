@@ -21,6 +21,7 @@ interface AppStore {
   recordHit(hitData: HitData): void;
   endTurn(): void;
   resetGame(): void;
+  startNewLeg(): void;
 
   // Input mode
   inputMode: InputMode;
@@ -105,6 +106,21 @@ export const useAppStore = create<AppStore>((set) => ({
     }),
 
   resetGame: () => set({ currentGame: null, gameState: null, initialGameState: null, players: [], history: [] }),
+
+  startNewLeg: () => set((state) => {
+    if (!state.gameState || state.currentGame !== 'darts501') return state;
+    
+    const dartsState = state.gameState as Darts501GameState;
+    const newGameState = createInitialDarts501State(
+      state.players,
+      dartsState.players
+    );
+    
+    return {
+      gameState: newGameState,
+      history: [],
+    };
+  }),
 
   setInputMode: (mode) => set({ inputMode: mode }),
 

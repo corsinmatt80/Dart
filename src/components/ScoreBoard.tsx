@@ -6,9 +6,10 @@ interface ScoreBoardProps {
   gameState: KillerGameState | any;
   gameType: 'killer' | 'darts501';
   onReset: () => void;
+  onNewLeg?: () => void;
 }
 
-function ScoreBoard({ gameState, gameType, onReset }: ScoreBoardProps) {
+function ScoreBoard({ gameState, gameType, onReset, onNewLeg }: ScoreBoardProps) {
   const currentPlayer = gameState?.players?.[gameState?.currentPlayerIndex];
 
   return (
@@ -115,11 +116,19 @@ function ScoreBoard({ gameState, gameType, onReset }: ScoreBoardProps) {
       {gameState?.winner && (
         <div className="bg-success/20 border-2 border-success rounded-lg p-4 text-center">
           <p className="text-success font-bold text-2xl">🎉 {gameState.winner.name} Wins!</p>
+          {gameType === 'darts501' && onNewLeg && (
+            <button
+              onClick={onNewLeg}
+              className="mt-4 w-full px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition"
+            >
+              🎯 Neues Leg starten
+            </button>
+          )}
           <button
             onClick={onReset}
-            className="mt-4 w-full px-4 py-2 bg-success hover:bg-success/80 text-white rounded-lg font-bold transition"
+            className="mt-2 w-full px-4 py-2 bg-success hover:bg-success/80 text-white rounded-lg font-bold transition"
           >
-            Play Again
+            Neues Match (Score zurücksetzen)
           </button>
         </div>
       )}

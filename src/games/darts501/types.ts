@@ -6,6 +6,7 @@ export interface Darts501GameState {
     shots: number;
     scoreAtTurnStart?: number;
     turnBusted?: boolean;
+    legsWon: number;
   })[];
   currentPlayerIndex: number;
   winner: Player | null;
@@ -18,12 +19,13 @@ export interface Darts501GameActions {
   reset(): void;
 }
 
-export function createInitialDarts501State(players: Player[]): Darts501GameState {
+export function createInitialDarts501State(players: Player[], existingPlayers?: Darts501GameState['players']): Darts501GameState {
   return {
-    players: players.map((player) => ({
+    players: players.map((player, index) => ({
       ...player,
       score: 501,
       shots: 0,
+      legsWon: existingPlayers?.[index]?.legsWon ?? 0,
     })),
     currentPlayerIndex: 0,
     winner: null,
@@ -57,6 +59,7 @@ export function processDarts501Hit(
     if (hitData.multiplier === 2) {
       // Valid finish - game won!
       currentPlayer.score = 0;
+      currentPlayer.legsWon += 1;
       newState.winner = currentPlayer;
       newState.gamePhase = 'ended';
       return newState;

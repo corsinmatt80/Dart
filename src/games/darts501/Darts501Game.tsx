@@ -6,7 +6,7 @@ import ScoreBoard from '../../components/ScoreBoard';
 import { Volume2, VolumeX } from 'lucide-react';
 
 function Darts501Game() {
-  const { gameState, recordHit, endTurn, resetGame, undo, history } = useAppStore();
+  const { gameState, recordHit, endTurn, resetGame, startNewLeg, undo, history } = useAppStore();
   const [soundEnabled, setSoundEnabled] = React.useState(true);
   const [inputMode, setInputMode] = React.useState<'camera' | 'manual'>('manual');
 
@@ -87,12 +87,18 @@ function Darts501Game() {
                   : 'bg-white/10'
               }`}
             >
-              <p className={`text-sm font-medium mb-1 ${
-                index === dartsState.currentPlayerIndex ? 'text-yellow-200' : 'text-gray-400'
-              }`}>
-                {player.name}
-                {index === dartsState.currentPlayerIndex && ' 🎯'}
-              </p>
+              <div className="flex justify-between items-start mb-2">
+                <p className={`text-sm font-medium ${
+                  index === dartsState.currentPlayerIndex ? 'text-yellow-200' : 'text-gray-400'
+                }`}>
+                  {player.name}
+                  {index === dartsState.currentPlayerIndex && ' 🎯'}
+                </p>
+                <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2 rounded-full shadow-lg">
+                  <span className="text-white font-black text-2xl">{player.legsWon}</span>
+                  <span className="text-white/80 text-sm ml-1 font-bold">LEGS</span>
+                </div>
+              </div>
               <p className={`font-black ${
                 index === dartsState.currentPlayerIndex 
                   ? 'text-5xl text-white' 
@@ -100,8 +106,24 @@ function Darts501Game() {
               }`}>
                 {player.score}
               </p>
-              {index === dartsState.currentPlayerIndex && player.turnBusted && (
-                <p className="text-red-300 text-xs mt-1 font-bold">❌ BUST!</p>
+              {index === dartsState.currentPlayerIndex && (
+                <div className="mt-2">
+                  <div className="flex items-center justify-center gap-2">
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className={`w-4 h-4 rounded-full transition-all ${
+                          i < player.shots
+                            ? 'bg-yellow-400 shadow-lg shadow-yellow-400/50'
+                            : 'bg-white/20 border border-white/40'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  {player.turnBusted && (
+                    <p className="text-red-300 text-xs mt-1 font-bold">❌ BUST!</p>
+                  )}
+                </div>
               )}
             </div>
           ))}
@@ -142,34 +164,22 @@ function Darts501Game() {
               ))}
             </div>
 
-            {/* Shots Counter and Controls */}
-            <div className="mt-6 space-y-3">
-              <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-                <p className="text-sm text-gray-400 mb-2">Shots This Turn: {currentPlayer.shots}/3</p>
-                <div className="w-full bg-white/20 rounded-full h-2">
-                  <div
-                    className="bg-accent h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${(currentPlayer.shots / 3) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {currentPlayer.shots === 3 && (
-                  <button
-                    onClick={() => endTurn()}
-                    className="w-full px-3 py-2 bg-gradient-to-r from-primary to-accent hover:from-primary/80 hover:to-accent/80 rounded-lg font-bold text-white transition text-sm"
-                  >
-                    End Turn
-                  </button>
-                )}
-              </div>
+            {/* Controls */}
+            <div className="mt-4">
+              {currentPlayer.shots === 3 && (
+                <button
+                  onClick={() => endTurn()}
+                  className="w-full px-3 py-2 bg-gradient-to-r from-primary to-accent hover:from-primary/80 hover:to-accent/80 rounded-lg font-bold text-white transition text-sm"
+                >
+                  End Turn
+                </button>
+              )}
             </div>
           </div>
 
           {/* Scoreboard */}
           <div>
-            <ScoreBoard gameState={dartsState} gameType="darts501" onReset={resetGame} />
+            <ScoreBoard gameState={dartsState} gameType="darts501" onReset={resetGame} onNewLeg={startNewLeg} />
           </div>
         </div>
       </div>
