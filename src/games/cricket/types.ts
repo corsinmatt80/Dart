@@ -19,7 +19,7 @@ export interface CricketGameState {
   round: number;
   maxRounds: number;
   winner: Player | null;
-  gamePhase: 'setup' | 'playing' | 'ended';
+  gamePhase: 'setup' | 'playing' | 'confirming' | 'ended';
 }
 
 export function createInitialCricketState(
@@ -105,7 +105,7 @@ export function processCricketHit(
     
     if (currentPlayer.points <= minOpponentPoints) {
       newState.winner = currentPlayer;
-      newState.gamePhase = 'ended';
+      newState.gamePhase = 'confirming';
       return newState;
     }
   }
@@ -132,7 +132,7 @@ function endCricketTurn(state: CricketGameState): CricketGameState {
       // Game over - lowest points wins
       const sortedPlayers = [...newState.players].sort((a, b) => a.points - b.points);
       newState.winner = sortedPlayers[0];
-      newState.gamePhase = 'ended';
+      newState.gamePhase = 'confirming';
       return newState;
     }
   }
