@@ -6,7 +6,7 @@ interface LimboSetupProps {
   onBack: () => void;
 }
 
-const LIMIT_OPTIONS = [80, 100, 120, 150, 180];
+const LIMIT_OPTIONS = [60, 80, 100, 120, 150];
 const LIVES_OPTIONS = [1, 2, 3, 4, 5];
 
 function LimboSetup({ onStart, onBack }: LimboSetupProps) {
