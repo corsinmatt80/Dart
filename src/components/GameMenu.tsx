@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
-import { Zap, Target, RotateCcw, Smartphone, CircleDot } from 'lucide-react';
+import { Zap, Target, RotateCcw, Smartphone, CircleDot, TrendingDown } from 'lucide-react';
 
 function GameMenu() {
   const { players, initializeGame, resetGame, setCurrentGame } = useAppStore();
@@ -52,9 +52,9 @@ function GameMenu() {
     getLocalIp();
   }, []);
 
-  const selectGame = (game: 'killer' | 'darts501' | 'cricket') => {
-    if (game === 'darts501' || game === 'cricket') {
-      // For 501 and Cricket, just set the game - options screen will handle initialization
+  const selectGame = (game: 'killer' | 'darts501' | 'cricket' | 'limbo') => {
+    if (game === 'darts501' || game === 'cricket' || game === 'limbo') {
+      // For 501, Cricket and Limbo, just set the game - options screen will handle initialization
       setCurrentGame(game);
     } else {
       initializeGame(game, players);
@@ -121,6 +121,19 @@ function GameMenu() {
               Hit 15-20 and Bull three times to close, then score points. First to close all wins!
             </p>
             <div className="text-green-400 font-semibold">Click to Play →</div>
+          </div>
+
+          {/* Limbo Card */}
+          <div
+            onClick={() => selectGame('limbo')}
+            className="bg-white/10 backdrop-blur-md rounded-lg p-6 cursor-pointer hover:bg-white/20 transition transform hover:scale-105 border border-white/30"
+          >
+            <TrendingDown className="text-purple-400 mb-4" size={40} />
+            <h2 className="text-2xl font-bold text-white mb-2">Limbo</h2>
+            <p className="text-gray-300 mb-4">
+              How low can you go? Throw 3 darts under the limit. Your total sets the new limit!
+            </p>
+            <div className="text-purple-400 font-semibold">Click to Play →</div>
           </div>
         </div>
 

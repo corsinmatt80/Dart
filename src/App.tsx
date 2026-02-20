@@ -7,11 +7,13 @@ import Darts501Game from './games/darts501/Darts501Game';
 import Darts501Setup from './games/darts501/Darts501Setup';
 import CricketGame from './games/cricket/CricketGame';
 import CricketSetup from './games/cricket/CricketSetup';
+import LimboGame from './games/limbo/LimboGame';
+import LimboSetup from './games/limbo/LimboSetup';
 import MobileCamera from './pages/MobileCameraV3';
 import './styles/global.css';
 
 function App() {
-  const { currentGame, gameState, players, recordHit, initializeDarts501, initializeCricket, setCurrentGame } = useAppStore();
+  const { currentGame, gameState, players, recordHit, initializeDarts501, initializeCricket, initializeLimbo, setCurrentGame } = useAppStore();
 
   // Check if Mobile Camera page is requested (hash-based for GitHub Pages)
   const hash = window.location.hash.toLowerCase();
@@ -97,6 +99,19 @@ function App() {
       );
     }
     return <CricketGame />;
+  }
+
+  if (currentGame === 'limbo') {
+    // Show setup screen if game not initialized yet
+    if (!gameState) {
+      return (
+        <LimboSetup 
+          onStart={(startLimit, lives) => initializeLimbo(players, startLimit, lives)}
+          onBack={() => setCurrentGame(null as any)}
+        />
+      );
+    }
+    return <LimboGame />;
   }
 
   return <div>Game not found</div>;

@@ -3,9 +3,10 @@ import { GameType, Player, InputMode } from '../games/types';
 import { KillerGameState, createInitialKillerState, procesKillerHit } from '../games/killer/types';
 import { Darts501GameState, Darts501Options, createInitialDarts501State, processDarts501Hit } from '../games/darts501/types';
 import { CricketGameState, createInitialCricketState, processCricketHit } from '../games/cricket/types';
+import { LimboGameState, createInitialLimboState, processLimboHit } from '../games/limbo/types';
 import { HitData } from '../games/types';
 
-type GameState = KillerGameState | Darts501GameState | CricketGameState | null;
+type GameState = KillerGameState | Darts501GameState | CricketGameState | LimboGameState | null;
 
 interface AppStore {
   // Game selection
@@ -22,6 +23,7 @@ interface AppStore {
   initializeGame(game: GameType, players: Player[]): void;
   initializeDarts501(players: Player[], options: Darts501Options): void;
   initializeCricket(players: Player[]): void;
+  initializeLimbo(players: Player[], startLimit: number, lives: number): void;
   recordHit(hitData: HitData): void;
   endTurn(): void;
   resetGame(): void;
@@ -92,6 +94,18 @@ export const useAppStore = create<AppStore>((set) => ({
     });
   },
 
+  initializeLimbo: (players, startLimit, lives) => {
+    const gameState = createInitialLimboState(players, startLimit, lives);
+
+    set({
+      currentGame: 'limbo',
+      players,
+      gameState,
+      initialGameState: JSON.parse(JSON.stringify(gameState)),
+      history: [],
+    });
+  },
+
   recordHit: (hitData) =>
     set((state) => {
       if (!state.gameState || !state.currentGame) return state;
@@ -105,6 +119,8 @@ export const useAppStore = create<AppStore>((set) => ({
         newGameState = processDarts501Hit(state.gameState as Darts501GameState, hitData);
       } else if (state.currentGame === 'cricket') {
         newGameState = processCricketHit(state.gameState as CricketGameState, hitData);
+      } else if (state.currentGame === 'limbo') {
+        newGameState = processLimboHit(state.gameState as LimboGameState, hitData);
       }
 
       return {
