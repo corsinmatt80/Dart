@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { GameType, Player, InputMode } from '../games/types';
 import { KillerGameState, createInitialKillerState, procesKillerHit } from '../games/killer/types';
-import { Darts501GameState, createInitialDarts501State, processDarts501Hit } from '../games/darts501/types';
+import { Darts501GameState, Darts501Options, createInitialDarts501State, processDarts501Hit } from '../games/darts501/types';
 import { HitData } from '../games/types';
 
 type GameState = KillerGameState | Darts501GameState | null;
@@ -17,7 +17,9 @@ interface AppStore {
 
   // Game state
   gameState: GameState;
+  darts501Options: Darts501Options | null;
   initializeGame(game: GameType, players: Player[]): void;
+  initializeDarts501(players: Player[], options: Darts501Options): void;
   recordHit(hitData: HitData): void;
   endTurn(): void;
   resetGame(): void;
@@ -38,6 +40,7 @@ export const useAppStore = create<AppStore>((set) => ({
   players: [],
   gameState: null,
   initialGameState: null,
+  darts501Options: null,
   inputMode: 'manual',
   history: [],
 
@@ -50,14 +53,26 @@ export const useAppStore = create<AppStore>((set) => ({
     
     if (game === 'killer') {
       gameState = createInitialKillerState(players);
-    } else if (game === 'darts501') {
-      gameState = createInitialDarts501State(players);
     }
+    // Note: darts501 should use initializeDarts501 instead
 
     set({
       currentGame: game,
       players,
       gameState,
+      initialGameState: JSON.parse(JSON.stringify(gameState)),
+      history: [],
+    });
+  },
+
+  initializeDarts501: (players, options) => {
+    const gameState = createInitialDarts501State(players, undefined, options);
+
+    set({
+      currentGame: 'darts501',
+      players,
+      gameState,
+      darts501Options: options,
       initialGameState: JSON.parse(JSON.stringify(gameState)),
       history: [],
     });
@@ -105,7 +120,7 @@ export const useAppStore = create<AppStore>((set) => ({
       return { gameState: newState };
     }),
 
-  resetGame: () => set({ currentGame: null, gameState: null, initialGameState: null, players: [], history: [] }),
+  resetGame: () => set({ currentGame: null, gameState: null, initialGameState: null, players: [], history: [], darts501Options: null }),
 
   startNewLeg: () => set((state) => {
     if (!state.gameState || state.currentGame !== 'darts501') return state;
@@ -113,7 +128,8 @@ export const useAppStore = create<AppStore>((set) => ({
     const dartsState = state.gameState as Darts501GameState;
     const newGameState = createInitialDarts501State(
       state.players,
-      dartsState.players
+      dartsState.players,
+      state.darts501Options ?? dartsState.options
     );
     
     return {

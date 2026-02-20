@@ -67,7 +67,18 @@ function Darts501Game() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-accent">🎯 501 Darts</h1>
+          <div>
+            <h1 className="text-2xl font-bold text-accent">🎯 {dartsState.options.startScore} Darts</h1>
+            <div className="flex gap-2 mt-1">
+              <span className="text-xs px-2 py-0.5 bg-green-600/50 text-green-200 rounded">
+                {dartsState.options.inMode === 'straight' ? 'Straight In' : 'Double In'}
+              </span>
+              <span className="text-xs px-2 py-0.5 bg-red-600/50 text-red-200 rounded">
+                {dartsState.options.outMode === 'straight' ? 'Straight Out' : 
+                 dartsState.options.outMode === 'double' ? 'Double Out' : 'Master Out'}
+              </span>
+            </div>
+          </div>
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition"
@@ -122,6 +133,9 @@ function Darts501Game() {
                   </div>
                   {player.turnBusted && (
                     <p className="text-red-300 text-xs mt-1 font-bold">❌ BUST!</p>
+                  )}
+                  {dartsState.options.inMode === 'double' && !player.hasStarted && !player.turnBusted && (
+                    <p className="text-yellow-300 text-xs mt-1 font-bold animate-pulse">⚡ Double zum Starten!</p>
                   )}
                 </div>
               )}

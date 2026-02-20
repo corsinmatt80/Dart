@@ -4,11 +4,12 @@ import PlayerSetup from './components/PlayerSetup';
 import GameMenu from './components/GameMenu';
 import KillerGame from './games/killer/KillerGame';
 import Darts501Game from './games/darts501/Darts501Game';
+import Darts501Setup from './games/darts501/Darts501Setup';
 import MobileCamera from './pages/MobileCameraV3';
 import './styles/global.css';
 
 function App() {
-  const { currentGame, players, recordHit } = useAppStore();
+  const { currentGame, gameState, players, recordHit, initializeDarts501, setCurrentGame } = useAppStore();
 
   // Check if Mobile Camera page is requested (hash-based for GitHub Pages)
   const hash = window.location.hash.toLowerCase();
@@ -71,6 +72,15 @@ function App() {
   }
 
   if (currentGame === 'darts501') {
+    // Show setup screen if game not initialized yet
+    if (!gameState) {
+      return (
+        <Darts501Setup 
+          onStart={(options) => initializeDarts501(players, options)}
+          onBack={() => setCurrentGame(null as any)}
+        />
+      );
+    }
     return <Darts501Game />;
   }
 
