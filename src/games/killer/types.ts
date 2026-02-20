@@ -88,8 +88,7 @@ export function procesKillerHit(
         player.id !== currentPlayer.id &&
         !player.eliminated
       ) {
-        // Check if target is already at 0 before reducing
-        const wasAtZero = player.hits === 0;
+        const hitsBeforeHit = player.hits;
         
         // Reduce hits by multiplier (3x hit = reduce by 3, 2x hit = reduce by 2, etc)
         player.hits = Math.max(0, player.hits - hitData.multiplier);
@@ -99,8 +98,8 @@ export function procesKillerHit(
           player.killer = false;
         }
         
-        // If they were already at 0 and got hit, they're eliminated
-        if (wasAtZero) {
+        // If they were already at 0 and got hit, OR if the damage exceeds their remaining hits, they're eliminated
+        if (hitsBeforeHit === 0 || hitsBeforeHit < hitData.multiplier) {
           player.eliminated = true;
         }
         break;
