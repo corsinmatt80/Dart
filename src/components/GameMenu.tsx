@@ -42,9 +42,9 @@ function GameMenu() {
             <div className="flex items-center gap-3">
               <Smartphone className={cameraConnected ? 'text-green-400' : 'text-blue-400'} size={24} />
               <div className="text-left">
-                <h3 className="text-white font-bold">📱 Smartphone-Kamera verbinden</h3>
+                <h3 className="text-white font-bold">📱 Connect Smartphone Camera</h3>
                 <p className={`text-sm ${cameraConnected ? 'text-green-300' : 'text-gray-400'}`}>
-                  {cameraConnected ? '✅ Verbunden!' : 'Zum Verbinden klicken'}
+                  {cameraConnected ? '✅ Connected!' : 'Click to connect'}
                 </p>
               </div>
             </div>
@@ -61,7 +61,7 @@ function GameMenu() {
               <div className="grid md:grid-cols-2 gap-4 mt-4">
                 {/* QR Code for camera page */}
                 <div className="bg-white rounded-lg p-4 flex flex-col items-center justify-center">
-                  <p className="text-gray-600 text-sm mb-2 font-medium">QR-Code scannen:</p>
+                  <p className="text-gray-600 text-sm mb-2 font-medium">Scan QR code:</p>
                   <QRCodeSVG 
                     value={getManualCameraUrl()} 
                     size={150}
@@ -90,7 +90,7 @@ function GameMenu() {
                     onClick={() => setShowDetectionTest(!showDetectionTest)}
                     className="w-full py-2 bg-yellow-600 hover:bg-yellow-500 rounded-lg text-white font-bold mb-4"
                   >
-                    🎯 {showDetectionTest ? 'Dart-Erkennung ausblenden' : 'Dart-Erkennung testen'}
+                    🎯 {showDetectionTest ? 'Hide Dart Detection' : 'Test Dart Detection'}
                   </button>
                   {showDetectionTest && (
                     <DartDetectionTest 
@@ -113,7 +113,7 @@ function GameMenu() {
             <Skull className="text-red-500 mb-4" size={40} />
             <h2 className="text-2xl font-bold text-white mb-2">Killer</h2>
             <p className="text-sm text-gray-400">
-              Triff deine Zahlen, eliminiere Gegner. Strategie & Präzision gefragt!
+              Hit your numbers, eliminate opponents. Strategy & precision required!
             </p>
           </div>
 
@@ -125,7 +125,7 @@ function GameMenu() {
             <Target className="text-green-500 mb-4" size={40} />
             <h2 className="text-2xl font-bold text-white mb-2">501</h2>
             <p className="text-sm text-gray-400">
-              Der Klassiker – starte bei 501, beende mit Double-Out!
+              The classic – start at 501, finish with double-out!
             </p>
           </div>
 
@@ -137,7 +137,7 @@ function GameMenu() {
             <CircleDot className="text-yellow-500 mb-4" size={40} />
             <h2 className="text-2xl font-bold text-white mb-2">Cricket</h2>
             <p className="text-sm text-gray-400">
-              Schließe 15-20 & Bull – punkte auf offene Felder des Gegners!
+              Close 15-20 & Bull – score on opponent's open numbers!
             </p>
           </div>
 
@@ -149,7 +149,7 @@ function GameMenu() {
             <TrendingDown className="text-purple-500 mb-4" size={40} />
             <h2 className="text-2xl font-bold text-white mb-2">Limbo</h2>
             <p className="text-sm text-gray-400">
-              Wirf unter dem Ziel – je niedriger, desto besser!
+              Throw under the target – the lower, the better!
             </p>
           </div>
         </div>
@@ -160,14 +160,14 @@ function GameMenu() {
             className="text-gray-500 hover:text-white transition flex items-center justify-center gap-2 mx-auto"
           >
             <RotateCcw size={16} />
-            Spieler zurücksetzen
+            Reset players
           </button>
         </div>
 
         {/* Players Footer */}
         <div className="mt-8 bg-white/5 rounded-lg p-4">
           <p className="text-gray-400 text-sm text-center mb-3">
-            {players.length} {players.length === 1 ? 'Spieler' : 'Spieler'} bereit
+            {players.length} {players.length === 1 ? 'player' : 'players'} ready
           </p>
           <div className="flex flex-wrap justify-center gap-2">
             {players.map((player, index) => (

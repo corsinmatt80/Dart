@@ -100,6 +100,17 @@ function ManualWebRTC({ mode, onStreamReceived, onConnectionChange }: ManualWebR
   // Desktop: Create offer
   const createOffer = useCallback(async () => {
     try {
+      // Close existing connection if any
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+      
+      // Reset state
+      setLocalOffer('');
+      setRemoteInput('');
+      setErrorMessage('');
+      
       const pc = initPC();
       
       // Add a transceiver to receive video
@@ -137,6 +148,20 @@ function ManualWebRTC({ mode, onStreamReceived, onConnectionChange }: ManualWebR
     }
 
     try {
+      // Close existing connection if any
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(t => t.stop());
+        localStreamRef.current = null;
+      }
+      
+      // Reset state
+      setLocalAnswer('');
+      setErrorMessage('');
+
       // Get camera first
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
