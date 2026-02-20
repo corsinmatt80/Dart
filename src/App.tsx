@@ -5,11 +5,13 @@ import GameMenu from './components/GameMenu';
 import KillerGame from './games/killer/KillerGame';
 import Darts501Game from './games/darts501/Darts501Game';
 import Darts501Setup from './games/darts501/Darts501Setup';
+import CricketGame from './games/cricket/CricketGame';
+import CricketSetup from './games/cricket/CricketSetup';
 import MobileCamera from './pages/MobileCameraV3';
 import './styles/global.css';
 
 function App() {
-  const { currentGame, gameState, players, recordHit, initializeDarts501, setCurrentGame } = useAppStore();
+  const { currentGame, gameState, players, recordHit, initializeDarts501, initializeCricket, setCurrentGame } = useAppStore();
 
   // Check if Mobile Camera page is requested (hash-based for GitHub Pages)
   const hash = window.location.hash.toLowerCase();
@@ -82,6 +84,19 @@ function App() {
       );
     }
     return <Darts501Game />;
+  }
+
+  if (currentGame === 'cricket') {
+    // Show setup screen if game not initialized yet
+    if (!gameState) {
+      return (
+        <CricketSetup 
+          onStart={() => initializeCricket(players)}
+          onBack={() => setCurrentGame(null as any)}
+        />
+      );
+    }
+    return <CricketGame />;
   }
 
   return <div>Game not found</div>;

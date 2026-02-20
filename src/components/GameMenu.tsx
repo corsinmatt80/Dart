@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
-import { Zap, Target, RotateCcw, Smartphone } from 'lucide-react';
+import { Zap, Target, RotateCcw, Smartphone, CircleDot } from 'lucide-react';
 
 function GameMenu() {
   const { players, initializeGame, resetGame, setCurrentGame } = useAppStore();
@@ -52,9 +52,9 @@ function GameMenu() {
     getLocalIp();
   }, []);
 
-  const selectGame = (game: 'killer' | 'darts501') => {
-    if (game === 'darts501') {
-      // For 501, just set the game - options screen will handle initialization
+  const selectGame = (game: 'killer' | 'darts501' | 'cricket') => {
+    if (game === 'darts501' || game === 'cricket') {
+      // For 501 and Cricket, just set the game - options screen will handle initialization
       setCurrentGame(game);
     } else {
       initializeGame(game, players);
@@ -108,6 +108,19 @@ function GameMenu() {
               The professional scoring game. Count down from 501 to exactly 0 on a double.
             </p>
             <div className="text-accent font-semibold">Click to Play →</div>
+          </div>
+
+          {/* Cricket Card */}
+          <div
+            onClick={() => selectGame('cricket')}
+            className="bg-white/10 backdrop-blur-md rounded-lg p-6 cursor-pointer hover:bg-white/20 transition transform hover:scale-105 border border-white/30"
+          >
+            <CircleDot className="text-green-400 mb-4" size={40} />
+            <h2 className="text-2xl font-bold text-white mb-2">Cricket</h2>
+            <p className="text-gray-300 mb-4">
+              Hit 15-20 and Bull three times to close, then score points. First to close all wins!
+            </p>
+            <div className="text-green-400 font-semibold">Click to Play →</div>
           </div>
         </div>
 

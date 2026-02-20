@@ -1,4 +1,4 @@
-export type GameType = 'killer' | 'darts501' | 'limbo';
+export type GameType = 'killer' | 'darts501' | 'cricket';
 export type InputMode = 'manual' | 'camera' | 'api';
 
 export interface Player {

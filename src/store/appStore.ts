@@ -2,9 +2,10 @@ import { create } from 'zustand';
 import { GameType, Player, InputMode } from '../games/types';
 import { KillerGameState, createInitialKillerState, procesKillerHit } from '../games/killer/types';
 import { Darts501GameState, Darts501Options, createInitialDarts501State, processDarts501Hit } from '../games/darts501/types';
+import { CricketGameState, createInitialCricketState, processCricketHit } from '../games/cricket/types';
 import { HitData } from '../games/types';
 
-type GameState = KillerGameState | Darts501GameState | null;
+type GameState = KillerGameState | Darts501GameState | CricketGameState | null;
 
 interface AppStore {
   // Game selection
@@ -20,6 +21,7 @@ interface AppStore {
   darts501Options: Darts501Options | null;
   initializeGame(game: GameType, players: Player[]): void;
   initializeDarts501(players: Player[], options: Darts501Options): void;
+  initializeCricket(players: Player[]): void;
   recordHit(hitData: HitData): void;
   endTurn(): void;
   resetGame(): void;
@@ -78,6 +80,18 @@ export const useAppStore = create<AppStore>((set) => ({
     });
   },
 
+  initializeCricket: (players) => {
+    const gameState = createInitialCricketState(players);
+
+    set({
+      currentGame: 'cricket',
+      players,
+      gameState,
+      initialGameState: JSON.parse(JSON.stringify(gameState)),
+      history: [],
+    });
+  },
+
   recordHit: (hitData) =>
     set((state) => {
       if (!state.gameState || !state.currentGame) return state;
@@ -89,6 +103,8 @@ export const useAppStore = create<AppStore>((set) => ({
         newGameState = procesKillerHit(state.gameState as KillerGameState, hitData);
       } else if (state.currentGame === 'darts501') {
         newGameState = processDarts501Hit(state.gameState as Darts501GameState, hitData);
+      } else if (state.currentGame === 'cricket') {
+        newGameState = processCricketHit(state.gameState as CricketGameState, hitData);
       }
 
       return {
