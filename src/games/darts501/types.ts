@@ -52,8 +52,10 @@ export function processDarts501Hit(
 
   // Check for bust conditions
   if (newScore < 0 || newScore === 1) {
-    // Bust detected: don't deduct points, mark turn as busted
+    // Bust detected: revert score to start of turn and end turn immediately
+    currentPlayer.score = currentPlayer.scoreAtTurnStart!;
     currentPlayer.turnBusted = true;
+    return endDarts501Turn(newState);
   } else if (newScore === 0) {
     // Player reached exactly 0 - must be a double finish!
     if (hitData.multiplier === 2) {
@@ -64,19 +66,18 @@ export function processDarts501Hit(
       newState.gamePhase = 'ended';
       return newState;
     } else {
-      // Invalid finish (not a double) - mark as busted, don't deduct
+      // Invalid finish (not a double) - bust, revert and end turn
+      currentPlayer.score = currentPlayer.scoreAtTurnStart!;
       currentPlayer.turnBusted = true;
+      return endDarts501Turn(newState);
     }
   } else {
-    // Normal valid hit - only deduct if turn not busted yet
-    if (!currentPlayer.turnBusted) {
-      currentPlayer.score = newScore;
-    }
+    // Normal valid hit - deduct points
+    currentPlayer.score = newScore;
   }
 
   // End turn after 3 shots
   if (currentPlayer.shots === 3) {
-    // Score stays at the last valid value (no revert needed)
     return endDarts501Turn(newState);
   }
 
