@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Camera, Wifi, WifiOff, RotateCcw, Check, Target, ZoomIn, ZoomOut, Move } from 'lucide-react';
+import { detectDartboardEllipse } from './cv/dartboardDetection';
 
 // ============ TYPES ============
 interface Point {
@@ -36,13 +37,6 @@ interface DartHit {
   timestamp: number;
 }
 
-interface DetectedContour {
-  points: Point[];
-  area: number;
-  boundingBox: { x: number; y: number; width: number; height: number };
-  centroid: Point;
-}
-
 type CalibrationMode = 'auto-detecting' | 'manual-adjust' | 'confirming' | 'active';
 
 // ============ CONSTANTS ============
@@ -61,6 +55,9 @@ const DOUBLE_OUTER_R = 1.0;         // End of double (board edge)
 const DART_DETECTION_COOLDOWN = 2000;
 const MIN_DART_AREA = 80;
 const DIFF_THRESHOLD = 30;
+const BOARD_DETECTION_INTERVAL = 4;
+const BOARD_DETECTION_MAX_SIDE = 640;
+const BOARD_CONFIRM_THRESHOLD = 60;
 
 // ============ COMPONENT ============
 function MobileCameraV3() {
@@ -68,6 +65,7 @@ function MobileCameraV3() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
+  const detectionCanvasRef = useRef<HTMLCanvasElement | null>(null);
   
   // State
   const [cameraActive, setCameraActive] = useState(false);
@@ -94,333 +92,47 @@ function MobileCameraV3() {
   const lastDartTimeRef = useRef<number>(0);
   const frameCountRef = useRef(0);
   const detectionHistoryRef = useRef<Ellipse[]>([]);
+  const smoothedEllipseRef = useRef<Ellipse | null>(null);
+  const detectionMissesRef = useRef(0);
 
-  // ============ IMAGE PROCESSING UTILITIES ============
+  // ============ DARTBOARD DETECTION HELPERS ============
 
-  /**
-   * Convert RGB to HSV color space
-   */
-  const rgbToHsv = (r: number, g: number, b: number): { h: number; s: number; v: number } => {
-    r /= 255; g /= 255; b /= 255;
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const d = max - min;
-    
-    let h = 0;
-    const s = max === 0 ? 0 : d / max;
-    const v = max;
-    
-    if (d !== 0) {
-      switch (max) {
-        case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-        case g: h = ((b - r) / d + 2) / 6; break;
-        case b: h = ((r - g) / d + 4) / 6; break;
-      }
-    }
-    
-    return { h: h * 360, s: s * 100, v: v * 100 };
+  const blendAngle = (from: number, to: number, alpha: number): number => {
+    const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+    return from + delta * alpha;
   };
 
-  /**
-   * Create a color mask for dartboard detection (red and green areas)
-   */
-  const createDartboardColorMask = useCallback((imageData: ImageData): Uint8ClampedArray => {
-    const { width, height, data } = imageData;
-    const mask = new Uint8ClampedArray(width * height);
-    
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const pixelIdx = i / 4;
-      
-      const hsv = rgbToHsv(r, g, b);
-      
-      // Detect red segments (H: 0-15 or 345-360, S > 40, V > 30)
-      const isRed = ((hsv.h < 15 || hsv.h > 345) && hsv.s > 40 && hsv.v > 30);
-      
-      // Detect green segments (H: 80-160, S > 30, V > 25)
-      const isGreen = (hsv.h > 80 && hsv.h < 160 && hsv.s > 30 && hsv.v > 25);
-      
-      // Also detect black areas (very low V) which are part of the board
-      const isBlack = (hsv.v < 15 && hsv.s < 30);
-      
-      // White/beige areas (low S, high V)
-      const isWhite = (hsv.s < 25 && hsv.v > 60);
-      
-      mask[pixelIdx] = (isRed || isGreen || isBlack || isWhite) ? 255 : 0;
-    }
-    
-    return mask;
-  }, []);
-
-  /**
-   * Apply morphological operations to clean up the mask
-   */
-  const morphologicalClose = useCallback((mask: Uint8ClampedArray, width: number, height: number, kernelSize: number): Uint8ClampedArray => {
-    const dilated = new Uint8ClampedArray(width * height);
-    const closed = new Uint8ClampedArray(width * height);
-    const half = Math.floor(kernelSize / 2);
-    
-    // Dilate
-    for (let y = half; y < height - half; y++) {
-      for (let x = half; x < width - half; x++) {
-        let maxVal = 0;
-        for (let ky = -half; ky <= half; ky++) {
-          for (let kx = -half; kx <= half; kx++) {
-            maxVal = Math.max(maxVal, mask[(y + ky) * width + (x + kx)]);
-          }
-        }
-        dilated[y * width + x] = maxVal;
-      }
-    }
-    
-    // Erode
-    for (let y = half; y < height - half; y++) {
-      for (let x = half; x < width - half; x++) {
-        let minVal = 255;
-        for (let ky = -half; ky <= half; ky++) {
-          for (let kx = -half; kx <= half; kx++) {
-            minVal = Math.min(minVal, dilated[(y + ky) * width + (x + kx)]);
-          }
-        }
-        closed[y * width + x] = minVal;
-      }
-    }
-    
-    return closed;
-  }, []);
-
-  /**
-   * Find the largest connected component (the dartboard)
-   */
-  const findLargestBlob = useCallback((mask: Uint8ClampedArray, width: number, height: number): DetectedContour | null => {
-    const visited = new Uint8ClampedArray(width * height);
-    let largestBlob: DetectedContour | null = null;
-    let largestArea = 0;
-    
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const idx = y * width + x;
-        if (mask[idx] > 0 && visited[idx] === 0) {
-          // Flood fill
-          const points: Point[] = [];
-          const stack: Point[] = [{ x, y }];
-          let minX = x, maxX = x, minY = y, maxY = y;
-          let sumX = 0, sumY = 0;
-          
-          while (stack.length > 0) {
-            const p = stack.pop()!;
-            const pIdx = p.y * width + p.x;
-            
-            if (p.x < 0 || p.x >= width || p.y < 0 || p.y >= height) continue;
-            if (visited[pIdx] !== 0 || mask[pIdx] === 0) continue;
-            
-            visited[pIdx] = 1;
-            points.push(p);
-            sumX += p.x;
-            sumY += p.y;
-            
-            minX = Math.min(minX, p.x);
-            maxX = Math.max(maxX, p.x);
-            minY = Math.min(minY, p.y);
-            maxY = Math.max(maxY, p.y);
-            
-            // 4-connectivity for speed
-            stack.push({ x: p.x + 1, y: p.y });
-            stack.push({ x: p.x - 1, y: p.y });
-            stack.push({ x: p.x, y: p.y + 1 });
-            stack.push({ x: p.x, y: p.y - 1 });
-          }
-          
-          if (points.length > largestArea) {
-            largestArea = points.length;
-            largestBlob = {
-              points,
-              area: points.length,
-              boundingBox: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
-              centroid: { x: sumX / points.length, y: sumY / points.length }
-            };
-          }
-        }
-      }
-    }
-    
-    return largestBlob;
-  }, []);
-
-  /**
-   * Find edge points of a blob for ellipse fitting
-   */
-  const findEdgePoints = useCallback((mask: Uint8ClampedArray, width: number, height: number, blob: DetectedContour): Point[] => {
-    const edges: Point[] = [];
-    const { boundingBox } = blob;
-    
-    for (let y = boundingBox.y; y < boundingBox.y + boundingBox.height; y++) {
-      for (let x = boundingBox.x; x < boundingBox.x + boundingBox.width; x++) {
-        const idx = y * width + x;
-        if (mask[idx] > 0) {
-          // Check if it's an edge pixel (has at least one neighbor that is 0)
-          const hasEmptyNeighbor = 
-            (x > 0 && mask[idx - 1] === 0) ||
-            (x < width - 1 && mask[idx + 1] === 0) ||
-            (y > 0 && mask[idx - width] === 0) ||
-            (y < height - 1 && mask[idx + width] === 0);
-          
-          if (hasEmptyNeighbor) {
-            edges.push({ x, y });
-          }
-        }
-      }
-    }
-    
-    // Sample edges if there are too many
-    if (edges.length > 200) {
-      const sampled: Point[] = [];
-      const step = Math.floor(edges.length / 200);
-      for (let i = 0; i < edges.length; i += step) {
-        sampled.push(edges[i]);
-      }
-      return sampled;
-    }
-    
-    return edges;
-  }, []);
-
-  /**
-   * Fit an ellipse to a set of points using least squares
-   * Uses the direct ellipse fitting method
-   */
-  const fitEllipse = useCallback((points: Point[]): Ellipse | null => {
-    if (points.length < 6) return null;
-    
-    // Normalize points to improve numerical stability
-    let sumX = 0, sumY = 0;
-    for (const p of points) {
-      sumX += p.x;
-      sumY += p.y;
-    }
-    const cx = sumX / points.length;
-    const cy = sumY / points.length;
-    
-    let maxDist = 0;
-    for (const p of points) {
-      const d = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2);
-      if (d > maxDist) maxDist = d;
-    }
-    const scale = maxDist > 0 ? maxDist : 1;
-    
-    // Build design matrix for general conic: Ax² + Bxy + Cy² + Dx + Ey + F = 0
-    // We'll use a simpler approach: fit to the normalized points
-    const normalized = points.map(p => ({
-      x: (p.x - cx) / scale,
-      y: (p.y - cy) / scale
-    }));
-    
-    // Use moment-based ellipse fitting
-    let m00 = normalized.length;
-    let m10 = 0, m01 = 0, m20 = 0, m02 = 0, m11 = 0;
-    
-    for (const p of normalized) {
-      m10 += p.x;
-      m01 += p.y;
-      m20 += p.x * p.x;
-      m02 += p.y * p.y;
-      m11 += p.x * p.y;
-    }
-    
-    // Central moments
-    const mu20 = m20 / m00 - (m10 / m00) ** 2;
-    const mu02 = m02 / m00 - (m01 / m00) ** 2;
-    const mu11 = m11 / m00 - (m10 / m00) * (m01 / m00);
-    
-    // Eigenvalues for ellipse semi-axes
-    const delta = Math.sqrt((mu20 - mu02) ** 2 + 4 * mu11 ** 2);
-    const lambda1 = (mu20 + mu02 + delta) / 2;
-    const lambda2 = (mu20 + mu02 - delta) / 2;
-    
-    if (lambda1 <= 0 || lambda2 <= 0) return null;
-    
-    // Semi-axes (scaled back)
-    const a = Math.sqrt(lambda1) * scale * 2;
-    const b = Math.sqrt(lambda2) * scale * 2;
-    
-    // Rotation angle
-    let theta = 0;
-    if (mu11 !== 0) {
-      theta = 0.5 * Math.atan2(2 * mu11, mu20 - mu02);
-    } else if (mu20 < mu02) {
-      theta = Math.PI / 2;
-    }
-    
-    return {
-      centerX: cx,
-      centerY: cy,
-      radiusX: Math.max(a, b),
-      radiusY: Math.min(a, b),
-      rotation: theta
-    };
-  }, []);
-
-  /**
-   * Validate if the detected ellipse looks like a dartboard
-   */
-  const validateEllipse = useCallback((ellipse: Ellipse, width: number, height: number): number => {
-    // Must be reasonably circular (aspect ratio between 0.7 and 1.0)
-    const aspectRatio = Math.min(ellipse.radiusX, ellipse.radiusY) / Math.max(ellipse.radiusX, ellipse.radiusY);
-    if (aspectRatio < 0.6 || aspectRatio > 1.0) return 0;
-    
-    // Must be a reasonable size (10-50% of frame)
-    const avgRadius = (ellipse.radiusX + ellipse.radiusY) / 2;
-    const frameSize = Math.min(width, height);
-    const relativeSize = avgRadius / frameSize;
-    if (relativeSize < 0.1 || relativeSize > 0.5) return 0;
-    
-    // Must be roughly centered (within 60% of frame)
-    const centerDistX = Math.abs(ellipse.centerX - width / 2) / width;
-    const centerDistY = Math.abs(ellipse.centerY - height / 2) / height;
-    if (centerDistX > 0.4 || centerDistY > 0.4) return 0;
-    
-    // Calculate quality score
-    let quality = 0;
-    quality += aspectRatio * 40; // Up to 40 points for circularity
-    quality += (1 - Math.abs(relativeSize - 0.3) * 2) * 30; // Up to 30 points for ideal size
-    quality += (1 - centerDistX - centerDistY) * 30; // Up to 30 points for centering
-    
-    return Math.max(0, Math.min(100, quality));
-  }, []);
-
-  /**
-   * Stabilize ellipse detection using temporal averaging
-   */
   const stabilizeEllipse = useCallback((newEllipse: Ellipse): Ellipse => {
     const history = detectionHistoryRef.current;
     history.push(newEllipse);
-    
-    // Keep last 10 detections
-    while (history.length > 10) {
+    while (history.length > 12) {
       history.shift();
     }
-    
-    if (history.length < 3) return newEllipse;
-    
-    // Average the last few detections
-    let sumCX = 0, sumCY = 0, sumRX = 0, sumRY = 0, sumRot = 0;
-    for (const e of history) {
-      sumCX += e.centerX;
-      sumCY += e.centerY;
-      sumRX += e.radiusX;
-      sumRY += e.radiusY;
-      sumRot += e.rotation;
+
+    const previous = smoothedEllipseRef.current;
+    if (!previous) {
+      smoothedEllipseRef.current = newEllipse;
+      return newEllipse;
     }
-    
-    return {
-      centerX: sumCX / history.length,
-      centerY: sumCY / history.length,
-      radiusX: sumRX / history.length,
-      radiusY: sumRY / history.length,
-      rotation: sumRot / history.length
+
+    const averageRadius = (previous.radiusX + previous.radiusY) / 2;
+    const centerJump = Math.hypot(
+      newEllipse.centerX - previous.centerX,
+      newEllipse.centerY - previous.centerY,
+    ) / Math.max(averageRadius, 1);
+
+    const alpha = centerJump > 0.25 ? 0.2 : 0.35;
+
+    const stabilized: Ellipse = {
+      centerX: previous.centerX + (newEllipse.centerX - previous.centerX) * alpha,
+      centerY: previous.centerY + (newEllipse.centerY - previous.centerY) * alpha,
+      radiusX: previous.radiusX + (newEllipse.radiusX - previous.radiusX) * alpha,
+      radiusY: previous.radiusY + (newEllipse.radiusY - previous.radiusY) * alpha,
+      rotation: blendAngle(previous.rotation, newEllipse.rotation, alpha),
     };
+
+    smoothedEllipseRef.current = stabilized;
+    return stabilized;
   }, []);
 
   // ============ COORDINATE TRANSFORMATION ============
@@ -754,54 +466,63 @@ function MobileCameraV3() {
 
       switch (mode) {
         case 'auto-detecting': {
-          // Auto-detect dartboard every 5 frames
-          if (frameCountRef.current % 5 === 0) {
-            const frame = ctx.getImageData(0, 0, w, h);
-            
-            // Create color mask
-            const mask = createDartboardColorMask(frame);
-            
-            // Clean up mask
-            const cleaned = morphologicalClose(mask, w, h, 5);
-            
-            // Find largest blob
-            const blob = findLargestBlob(cleaned, w, h);
-            
-            if (blob && blob.area > 1000) {
-              // Find edge points
-              const edges = findEdgePoints(cleaned, w, h, blob);
-              
-              if (edges.length > 20) {
-                // Fit ellipse
-                const ellipse = fitEllipse(edges);
-                
-                if (ellipse) {
-                  // Validate and score
-                  const quality = validateEllipse(ellipse, w, h);
-                  setDetectionQuality(quality);
-                  
-                  if (quality > 50) {
-                    // Stabilize
-                    const stable = stabilizeEllipse(ellipse);
-                    calibrationRef.current.ellipse = stable;
-                    
-                    // Draw overlay
-                    drawEllipseOverlay(overlayCtx, stable, false, rotationOffset);
-                    
-                    if (quality > 70) {
-                      setFeedback('🎯 Dartscheibe erkannt! Tippe zum Bestätigen');
-                    } else {
-                      setFeedback('🔍 Dartscheibe wird erkannt...');
-                    }
+          if (frameCountRef.current % BOARD_DETECTION_INTERVAL === 0) {
+            const detectionCanvas = detectionCanvasRef.current ?? document.createElement('canvas');
+            detectionCanvasRef.current = detectionCanvas;
+
+            const detectionCtx = detectionCanvas.getContext('2d', { willReadFrequently: true });
+            if (detectionCtx) {
+              const scale = Math.min(1, BOARD_DETECTION_MAX_SIDE / Math.max(w, h));
+              const detectW = Math.max(240, Math.round(w * scale));
+              const detectH = Math.max(240, Math.round(h * scale));
+
+              if (detectionCanvas.width !== detectW || detectionCanvas.height !== detectH) {
+                detectionCanvas.width = detectW;
+                detectionCanvas.height = detectH;
+              }
+
+              detectionCtx.drawImage(video, 0, 0, detectW, detectH);
+              const detectionFrame = detectionCtx.getImageData(0, 0, detectW, detectH);
+              const detection = detectDartboardEllipse(detectionFrame);
+
+              if (detection) {
+                const invScale = 1 / scale;
+                const detectedEllipse: Ellipse = {
+                  centerX: detection.ellipse.centerX * invScale,
+                  centerY: detection.ellipse.centerY * invScale,
+                  radiusX: detection.ellipse.radiusX * invScale,
+                  radiusY: detection.ellipse.radiusY * invScale,
+                  rotation: detection.ellipse.rotation,
+                };
+
+                const stable = stabilizeEllipse(detectedEllipse);
+                calibrationRef.current.ellipse = stable;
+                detectionMissesRef.current = 0;
+                setDetectionQuality(detection.quality);
+
+                if (detection.quality > 80) {
+                  setFeedback('🎯 Dartscheibe sicher erkannt! Tippe auf Bestätigen');
+                } else if (detection.quality > 60) {
+                  setFeedback('🎯 Dartscheibe erkannt - Kamera kurz ruhig halten');
+                } else {
+                  setFeedback('🔍 Dartscheibenmuster wird verifiziert...');
+                }
+              } else {
+                detectionMissesRef.current += 1;
+
+                if (detectionMissesRef.current > 8) {
+                  setDetectionQuality(0);
+                  if (!calibrationRef.current.ellipse) {
+                    setFeedback('🔍 Suche Dartscheibenmuster...');
+                  } else {
+                    setFeedback('⚠️ Dartscheibe nicht stabil im Bild');
                   }
                 }
               }
-            } else {
-              setFeedback('🔍 Suche Dartscheibe...');
-              setDetectionQuality(0);
             }
-          } else if (calibrationRef.current.ellipse) {
-            // Draw last detected ellipse
+          }
+
+          if (calibrationRef.current.ellipse) {
             drawEllipseOverlay(overlayCtx, calibrationRef.current.ellipse, false, rotationOffset);
           }
           break;
@@ -905,8 +626,7 @@ function MobileCameraV3() {
     return () => cancelAnimationFrame(animationId);
   }, [
     cameraActive, mode, rotationOffset, manualEllipse,
-    createDartboardColorMask, morphologicalClose, findLargestBlob, findEdgePoints,
-    fitEllipse, validateEllipse, stabilizeEllipse, drawEllipseOverlay, drawHitMarker,
+    stabilizeEllipse, drawEllipseOverlay, drawHitMarker,
     detectDartInDifference, pointToEllipsePolar, polarToScore, sendHitToDesktop
   ]);
 
@@ -939,6 +659,8 @@ function MobileCameraV3() {
     calibrationRef.current = { ellipse: null, isCalibrated: false, rotationOffset: 0 };
     referenceFrameRef.current = null;
     detectionHistoryRef.current = [];
+    smoothedEllipseRef.current = null;
+    detectionMissesRef.current = 0;
     setMode('auto-detecting');
     setDetectionQuality(0);
     setFeedback('🔍 Suche Dartscheibe...');
@@ -1067,7 +789,7 @@ function MobileCameraV3() {
           <div className="flex gap-2">
             <button
               onClick={handleConfirmCalibration}
-              disabled={detectionQuality < 50}
+              disabled={detectionQuality < BOARD_CONFIRM_THRESHOLD}
               className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:text-gray-400 text-white font-bold rounded-lg flex items-center justify-center gap-2"
             >
               <Check size={18} /> Bestätigen
