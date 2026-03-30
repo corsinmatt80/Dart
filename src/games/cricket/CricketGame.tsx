@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAppStore } from '../../store/appStore';
 import { navigateToMenu } from '../../App';
 import { CricketGameState, CRICKET_TARGETS, CricketTarget } from './types';
 import CricketInput from './CricketInput';
+import { useSound } from '../../hooks/useSound';
 import { Volume2, VolumeX, RotateCcw, RefreshCw } from 'lucide-react';
+import { useSpeak } from '../../hooks/useSpeak';
 
 // Progress bar component for marks with vibrant colors
 function MarkBar({ marks, isCurrentPlayer }: { marks: number; isCurrentPlayer: boolean }) {
@@ -47,8 +49,9 @@ function MarkBar({ marks, isCurrentPlayer }: { marks: number; isCurrentPlayer: b
 }
 
 function CricketGame() {
-  const { gameState, recordHit, undo, history, restartGame } = useAppStore();
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const { gameState, recordHit, undo, history, restartGame, soundEnabled, toggleSound, endTurn } = useAppStore();
+  const { playSoundForHit, playSound } = useSound();
+  const { speak } = useSpeak();
 
   if (!gameState || !['playing', 'confirming', 'ended'].includes((gameState as CricketGameState).gamePhase)) {
     return null;
@@ -64,10 +67,7 @@ function CricketGame() {
   };
 
   const handleHit = (hitData: any) => {
-    if (soundEnabled) {
-      const audio = new Audio('data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAA==');
-      audio.play().catch(() => {});
-    }
+    playSoundForHit(hitData);
     recordHit(hitData);
   };
 
@@ -97,8 +97,9 @@ function CricketGame() {
             </div>
           </div>
           <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
+            onClick={toggleSound}
             className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition"
+            title={soundEnabled ? 'Sound ausschalten' : 'Sound einschalten'}
           >
             {soundEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}
           </button>
@@ -124,6 +125,17 @@ function CricketGame() {
               ))}
             </div>
           </div>
+          {currentPlayer.shots === 3 && (
+            <button
+              onClick={() => {
+                speak(`${currentPlayer.points} Punkte`);
+                endTurn();
+              }}
+              className="w-full mt-4 px-3 py-2 bg-gradient-to-r from-primary to-accent hover:from-primary/80 hover:to-accent/80 rounded-lg font-bold text-white transition text-sm"
+            >
+              End Turn
+            </button>
+          )}
         </div>
 
         {/* Cricket Scoreboard */}

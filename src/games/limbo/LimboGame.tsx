@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAppStore } from '../../store/appStore';
 import { navigateToMenu } from '../../App';
 import { LimboGameState } from './types';
 import DartInput from '../../components/DartInput';
+import { useSound } from '../../hooks/useSound';
 import { Volume2, VolumeX, RotateCcw, Heart, Skull, Target, TrendingDown, RefreshCw } from 'lucide-react';
+import { useSpeak } from '../../hooks/useSpeak';
 
 function LimboGame() {
-  const { gameState, recordHit, undo, history, restartGame } = useAppStore();
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const { gameState, recordHit, undo, history, restartGame, soundEnabled, toggleSound } = useAppStore();
+  const { playSoundForHit, playSound } = useSound();
+  const { speak } = useSpeak();
 
   const limboState = gameState as LimboGameState;
 
@@ -19,11 +22,13 @@ function LimboGame() {
   const alivePlayers = limboState.players.filter(p => p.lives > 0);
 
   const handleHit = (hitData: any) => {
-    if (soundEnabled) {
-      const audio = new Audio('data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAA==');
-      audio.play().catch(() => {});
-    }
+    playSoundForHit(hitData);
     recordHit(hitData);
+  };
+
+  const endTurn = () => {
+    undo();
+    speak(`${currentPlayer.currentThrows.reduce((a, b) => a + b, 0)} Punkte`);
   };
 
   return (
@@ -38,8 +43,9 @@ function LimboGame() {
             </span>
           </div>
           <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
+            onClick={toggleSound}
             className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition"
+            title={soundEnabled ? 'Sound ausschalten' : 'Sound einschalten'}
           >
             {soundEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}
           </button>
@@ -109,6 +115,14 @@ function LimboGame() {
               </p>
             </div>
           </div>
+          {currentPlayer.shots === 3 && (
+            <button
+              onClick={endTurn}
+              className="w-full mt-4 px-3 py-2 bg-gradient-to-r from-primary to-accent hover:from-primary/80 hover:to-accent/80 rounded-lg font-bold text-white transition text-sm"
+            >
+              End Turn
+            </button>
+          )}
         </div>
 
         {/* Players Grid */}

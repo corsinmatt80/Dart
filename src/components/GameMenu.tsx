@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
-import { navigateTo } from '../App';
+import { navigateTo, navigateToMenu } from '../App';
 import { Skull, Target, RotateCcw, Smartphone, CircleDot, TrendingDown } from 'lucide-react';
 
 function GameMenu() {
-  const { players, clearPlayers } = useAppStore();
+  const { players, setPlayers } = useAppStore();
   const [localIp, setLocalIp] = useState<string>('localhost');
 
   useEffect(() => {
@@ -68,7 +68,7 @@ function GameMenu() {
           <div className="flex items-start gap-3">
             <Smartphone className="text-blue-400 mt-1" size={20} />
             <div className="flex-1">
-              <h3 className="text-white font-bold mb-2">📱 Connect with smartphone</h3>
+              <h3 className="text-white font-bold mb-2">📱 Connect with smartphone [BETA]</h3>
               <p className="text-blue-200 text-sm mb-3">Open this URL on your smartphone:</p>
               
               <code className="bg-blue-900/50 px-3 py-2 rounded text-blue-100 text-xs block break-all font-mono">
@@ -134,7 +134,7 @@ function GameMenu() {
         </div>
 
         <button
-          onClick={clearPlayers}
+          onClick={() => { setPlayers([]); navigateToMenu(); }}
           className="w-full px-6 py-3 bg-white/10 hover:bg-white/20 rounded-lg font-bold text-white transition flex items-center justify-center gap-2 border border-white/30"
         >
           <RotateCcw size={20} /> Change Players

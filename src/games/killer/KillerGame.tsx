@@ -4,11 +4,14 @@ import { navigateToMenu } from '../../App';
 import { KillerGameState } from './types';
 import DartInput from '../../components/DartInput';
 import ScoreBoard from '../../components/ScoreBoard';
+import { useSound } from '../../hooks/useSound';
 import { Volume2, VolumeX } from 'lucide-react';
+import { useSpeak } from '../../hooks/useSpeak';
 
 function KillerGame() {
-  const { gameState, recordHit, endTurn, undo, history, restartGame } = useAppStore();
-  const [soundEnabled, setSoundEnabled] = React.useState(true);
+  const { gameState, recordHit, endTurn, undo, history, restartGame, soundEnabled, toggleSound } = useAppStore();
+  const { playSoundForHit, playSound } = useSound();
+  const { speak } = useSpeak();
   const [inputMode, setInputMode] = React.useState<'camera' | 'manual'>('manual');
 
   // For Camera-Remote Mode: Listen for hits from /camera window
@@ -56,11 +59,7 @@ function KillerGame() {
   const currentPlayer = killerState.players[killerState.currentPlayerIndex];
 
   const handleHit = (hitData: any) => {
-    if (soundEnabled) {
-      // Play sound effect
-      const audio = new Audio('data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAA==');
-      audio.play().catch(() => {});
-    }
+    playSoundForHit(hitData);
     recordHit(hitData);
   };
 
@@ -71,8 +70,9 @@ function KillerGame() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-red-400">💀 Killer Darts</h1>
           <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
+            onClick={toggleSound}
             className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition"
+            title={soundEnabled ? 'Sound ausschalten' : 'Sound einschalten'}
           >
             {soundEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}
           </button>
@@ -132,7 +132,10 @@ function KillerGame() {
 
               {currentPlayer.shots >= 3 && (
                 <button
-                  onClick={() => endTurn()}
+                  onClick={() => {
+                    speak(`${currentPlayer.hits} Punkte`);
+                    endTurn();
+                  }}
                   className="w-full px-4 py-4 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 rounded-lg font-bold text-white transition text-lg"
                 >
                   🔄 Next Player

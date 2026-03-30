@@ -4,11 +4,14 @@ import { navigateToMenu } from '../../App';
 import { Darts501GameState } from './types';
 import DartInput from '../../components/DartInput';
 import ScoreBoard from '../../components/ScoreBoard';
+import { useSound } from '../../hooks/useSound';
 import { Volume2, VolumeX } from 'lucide-react';
+import { useSpeak } from '../../hooks/useSpeak';
 
 function Darts501Game() {
-  const { gameState, recordHit, endTurn, startNewLeg, undo, history, restartGame } = useAppStore();
-  const [soundEnabled, setSoundEnabled] = React.useState(true);
+  const { gameState, recordHit, endTurn, startNewLeg, undo, history, restartGame, soundEnabled, toggleSound } = useAppStore();
+  const { playSoundForHit, playSound } = useSound();
+  const { speak } = useSpeak();
   const [inputMode, setInputMode] = React.useState<'camera' | 'manual'>('manual');
 
   // For Camera-Remote Mode: Listen for hits from /camera window
@@ -56,10 +59,7 @@ function Darts501Game() {
   const currentPlayer = dartsState.players[dartsState.currentPlayerIndex];
 
   const handleHit = (hitData: any) => {
-    if (soundEnabled) {
-      const audio = new Audio('data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAA==');
-      audio.play().catch(() => {});
-    }
+    playSoundForHit(hitData);
     recordHit(hitData);
   };
 
@@ -81,8 +81,9 @@ function Darts501Game() {
             </div>
           </div>
           <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
+            onClick={toggleSound}
             className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition"
+            title={soundEnabled ? 'Sound ausschalten' : 'Sound einschalten'}
           >
             {soundEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}
           </button>
@@ -183,7 +184,10 @@ function Darts501Game() {
             <div className="mt-4">
               {currentPlayer.shots === 3 && (
                 <button
-                  onClick={() => endTurn()}
+                  onClick={() => {
+                    speak(`${currentPlayer.score} Punkte`);
+                    endTurn();
+                  }}
                   className="w-full px-3 py-2 bg-gradient-to-r from-primary to-accent hover:from-primary/80 hover:to-accent/80 rounded-lg font-bold text-white transition text-sm"
                 >
                   End Turn

@@ -28,7 +28,6 @@ interface AppStore {
   endTurn(): void;
   resetGame(): void;
   restartGame(): void;
-  clearPlayers(): void;
   startNewLeg(): void;
   limboOptions: { startLimit: number; lives: number } | null;
 
@@ -40,6 +39,11 @@ interface AppStore {
   history: GameState[];
   initialGameState: GameState;
   undo(): void;
+
+  // Sound settings
+  soundEnabled: boolean;
+  setSoundEnabled(enabled: boolean): void;
+  toggleSound(): void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -51,6 +55,7 @@ export const useAppStore = create<AppStore>((set) => ({
   limboOptions: null,
   inputMode: 'manual',
   history: [],
+  soundEnabled: true,
 
   setCurrentGame: (game) => set({ currentGame: game }),
 
@@ -159,8 +164,6 @@ export const useAppStore = create<AppStore>((set) => ({
 
   resetGame: () => set({ currentGame: null, gameState: null, initialGameState: null, history: [], darts501Options: null, limboOptions: null }),
 
-  clearPlayers: () => set({ currentGame: null, gameState: null, initialGameState: null, players: [], history: [], darts501Options: null, limboOptions: null }),
-
   restartGame: () => set((state) => {
     if (!state.currentGame || state.players.length === 0) return state;
 
@@ -217,4 +220,7 @@ export const useAppStore = create<AppStore>((set) => ({
         history: newHistory,
       };
     }),
+
+  setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
+  toggleSound: () => set((state) => ({ soundEnabled: !state.soundEnabled })),
 }));
