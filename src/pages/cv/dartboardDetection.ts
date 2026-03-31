@@ -17,6 +17,7 @@ export interface DartboardDetectionResult {
   patternScore: number;
   edgeScore: number;
   ringScore: number;
+  fieldScore: number;
 }
 
 interface Blob {
@@ -46,6 +47,7 @@ interface CandidateMetrics {
   ringScore: number;
   colorCoverageScore: number;
   colorAlternationScore: number;
+  scoringRingsScore: number;
   rimFitScore: number;
   fillScore: number;
   aspectScore: number;
@@ -295,17 +297,18 @@ function buildFeatureMaps(imageData: ImageData): FeatureMaps {
       clamp01((val - 0.08) / 0.84);
 
     const darkScore =
-      clamp01((0.46 - val) / 0.46) *
-      clamp01((0.68 - sat) / 0.68);
+      clamp01((0.38 - val) / 0.3) *
+      clamp01((0.56 - sat) / 0.56) *
+      clamp01((val - 0.035) / 0.12);
 
     const lightScore =
       clamp01((val - 0.42) / 0.58) *
       clamp01((0.52 - sat) / 0.52);
 
     const colorScore = Math.max(redScore, greenScore);
-    const boardScore = Math.max(redScore * 1.05, greenScore * 1.05, darkScore * 0.9, lightScore * 0.8);
+    const boardScore = Math.max(redScore * 1.08, greenScore * 1.08, darkScore * 0.45, lightScore * 0.84);
 
-    mask[idx] = boardScore > 0.14 ? 255 : 0;
+    mask[idx] = boardScore > 0.17 ? 255 : 0;
     colorMask[idx] = colorScore > 0.1 ? 255 : 0;
     redGreen[idx] = redScore - greenScore;
     colorStrength[idx] = colorScore;
@@ -847,6 +850,83 @@ function computeColorAlternationScore(
   return clamp01(total / rings.length);
 }
 
+function computeScoringRingsScore(
+  colorStrength: Float32Array,
+  width: number,
+  height: number,
+  ellipse: Ellipse,
+): number {
+  let triplePeakSum = 0;
+  let tripleInnerSum = 0;
+  let tripleOuterSum = 0;
+  let doublePeakSum = 0;
+  let doubleInnerSum = 0;
+  let doubleOuterSum = 0;
+  let triplePresent = 0;
+  let doublePresent = 0;
+  let count = 0;
+
+  for (let degree = 0; degree < 360; degree += 3) {
+    const angle = (degree * Math.PI) / 180;
+
+    const triplePeakPoint = ellipsePoint(ellipse, 0.505, angle);
+    const tripleInnerPoint = ellipsePoint(ellipse, 0.44, angle);
+    const tripleOuterPoint = ellipsePoint(ellipse, 0.57, angle);
+    const doublePeakPoint = ellipsePoint(ellipse, 0.945, angle);
+    const doubleInnerPoint = ellipsePoint(ellipse, 0.86, angle);
+    const doubleOuterPoint = ellipsePoint(ellipse, 1.03, angle);
+
+    const triplePeak = sampleBilinear(colorStrength, width, height, triplePeakPoint.x, triplePeakPoint.y);
+    const tripleInner = sampleBilinear(colorStrength, width, height, tripleInnerPoint.x, tripleInnerPoint.y);
+    const tripleOuter = sampleBilinear(colorStrength, width, height, tripleOuterPoint.x, tripleOuterPoint.y);
+    const doublePeak = sampleBilinear(colorStrength, width, height, doublePeakPoint.x, doublePeakPoint.y);
+    const doubleInner = sampleBilinear(colorStrength, width, height, doubleInnerPoint.x, doubleInnerPoint.y);
+    const doubleOuter = sampleBilinear(colorStrength, width, height, doubleOuterPoint.x, doubleOuterPoint.y);
+
+    triplePeakSum += triplePeak;
+    tripleInnerSum += tripleInner;
+    tripleOuterSum += tripleOuter;
+    doublePeakSum += doublePeak;
+    doubleInnerSum += doubleInner;
+    doubleOuterSum += doubleOuter;
+
+    if (triplePeak > 0.08) triplePresent += 1;
+    if (doublePeak > 0.08) doublePresent += 1;
+
+    count += 1;
+  }
+
+  if (count === 0) return 0;
+
+  const invCount = 1 / count;
+
+  const triplePeakAvg = triplePeakSum * invCount;
+  const tripleInnerAvg = tripleInnerSum * invCount;
+  const tripleOuterAvg = tripleOuterSum * invCount;
+  const doublePeakAvg = doublePeakSum * invCount;
+  const doubleInnerAvg = doubleInnerSum * invCount;
+  const doubleOuterAvg = doubleOuterSum * invCount;
+
+  const tripleContrast = triplePeakAvg - (tripleInnerAvg + tripleOuterAvg) * 0.5;
+  const doubleContrast = doublePeakAvg - (doubleInnerAvg + doubleOuterAvg) * 0.5;
+
+  const tripleContinuity = triplePresent * invCount;
+  const doubleContinuity = doublePresent * invCount;
+
+  const tripleScore =
+    clamp01((tripleContrast - 0.012) / 0.12) * 0.66 +
+    clamp01((tripleContinuity - 0.34) / 0.56) * 0.34;
+
+  const doubleScore =
+    clamp01((doubleContrast - 0.014) / 0.12) * 0.68 +
+    clamp01((doubleContinuity - 0.3) / 0.62) * 0.32;
+
+  const outsideLeak = clamp01((doubleOuterAvg - 0.12) / 0.28);
+  const leakPenalty = 1 - outsideLeak * 0.42;
+
+  return clamp01((tripleScore * 0.44 + doubleScore * 0.56) * leakPenalty);
+}
+
 function computeFillScore(mask: Uint8ClampedArray, width: number, height: number, ellipse: Ellipse): number {
   const minX = Math.max(0, Math.floor(ellipse.centerX - ellipse.radiusX));
   const maxX = Math.min(width - 1, Math.ceil(ellipse.centerX + ellipse.radiusX));
@@ -888,6 +968,7 @@ function scoreEllipse(
     height,
     ellipse,
   );
+  const scoringRingsScore = computeScoringRingsScore(maps.colorStrength, width, height, ellipse);
   const fillScore = computeFillScore(maps.mask, width, height, ellipse);
 
   const aspectRatio = Math.min(ellipse.radiusX, ellipse.radiusY) / Math.max(ellipse.radiusX, ellipse.radiusY);
@@ -903,20 +984,22 @@ function scoreEllipse(
   const centerScore = clamp01(1 - centerDistance / 0.48);
 
   let quality01 =
-    rimFitScore * 0.2 +
-    edgeScore * 0.2 +
-    ringScore * 0.16 +
-    patternScore * 0.11 +
-    colorCoverageScore * 0.16 +
-    colorAlternationScore * 0.12 +
-    fillScore * 0.03 +
-    aspectScore * 0.01 +
-    sizeScore * 0.01;
+    rimFitScore * 0.19 +
+    edgeScore * 0.18 +
+    ringScore * 0.14 +
+    patternScore * 0.09 +
+    colorCoverageScore * 0.13 +
+    colorAlternationScore * 0.1 +
+    scoringRingsScore * 0.15 +
+    fillScore * 0.01 +
+    aspectScore * 0.005 +
+    sizeScore * 0.005;
 
   if (rimFitScore < 0.1) quality01 *= 0.55;
   if (edgeScore < 0.07) quality01 *= 0.56;
   if (ringScore < 0.05 && patternScore < 0.05 && colorAlternationScore < 0.05) quality01 *= 0.72;
-  if (colorCoverageScore < 0.04 && edgeScore < 0.1) quality01 *= 0.72;
+  if (colorCoverageScore < 0.04 && scoringRingsScore < 0.18) quality01 *= 0.74;
+  if (scoringRingsScore < 0.13) quality01 *= 0.72;
   if (aspectScore < 0.14) quality01 *= 0.7;
   if (sizeScore < 0.1) quality01 *= 0.7;
 
@@ -929,6 +1012,7 @@ function scoreEllipse(
     ringScore,
     colorCoverageScore,
     colorAlternationScore,
+    scoringRingsScore,
     rimFitScore,
     fillScore,
     aspectScore,
@@ -1207,5 +1291,6 @@ export function detectDartboardEllipse(
     patternScore: best.metrics.patternScore,
     edgeScore: best.metrics.edgeScore,
     ringScore: best.metrics.ringScore,
+    fieldScore: best.metrics.scoringRingsScore,
   };
 }

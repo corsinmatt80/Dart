@@ -58,6 +58,7 @@ const DIFF_THRESHOLD = 30;
 const BOARD_DETECTION_INTERVAL = 3;
 const BOARD_DETECTION_MAX_SIDE = 720;
 const BOARD_CONFIRM_THRESHOLD = 40;
+const BOARD_FIELD_CONFIRM_THRESHOLD = 30;
 
 // ============ COMPONENT ============
 function MobileCameraV3() {
@@ -75,7 +76,7 @@ function MobileCameraV3() {
   const [hitCount, setHitCount] = useState(0);
   const [lastHit, setLastHit] = useState<DartHit | null>(null);
   const [detectionQuality, setDetectionQuality] = useState(0);
-  const [detectionStats, setDetectionStats] = useState({ edge: 0, ring: 0, pattern: 0 });
+  const [detectionStats, setDetectionStats] = useState({ edge: 0, ring: 0, pattern: 0, fields: 0 });
   
   // Manual adjustment state
   const [manualEllipse, setManualEllipse] = useState<Ellipse>({
@@ -515,9 +516,12 @@ function MobileCameraV3() {
                   edge: detection.edgeScore,
                   ring: detection.ringScore,
                   pattern: detection.patternScore,
+                  fields: detection.fieldScore,
                 });
 
-                if (detection.quality > 80) {
+                if (detection.fieldScore < 0.3 && detection.quality > 55) {
+                  setFeedback('🎯 Scheibe erkannt - Felder werden noch ausgerichtet');
+                } else if (detection.quality > 80) {
                   setFeedback('🎯 Dartscheibe sicher erkannt! Tippe auf Bestätigen');
                 } else if (detection.quality > 62) {
                   setFeedback('🎯 Dartscheibe erkannt - Kamera kurz ruhig halten');
@@ -531,6 +535,7 @@ function MobileCameraV3() {
                   edge: prev.edge * 0.92,
                   ring: prev.ring * 0.92,
                   pattern: prev.pattern * 0.92,
+                  fields: prev.fields * 0.92,
                 }));
 
                 if (detectionMissesRef.current > 20) {
@@ -691,7 +696,7 @@ function MobileCameraV3() {
     detectionMissesRef.current = 0;
     setMode('auto-detecting');
     setDetectionQuality(0);
-    setDetectionStats({ edge: 0, ring: 0, pattern: 0 });
+    setDetectionStats({ edge: 0, ring: 0, pattern: 0, fields: 0 });
     setFeedback('🔍 Suche Dartscheibe...');
   };
 
@@ -720,7 +725,7 @@ function MobileCameraV3() {
           )}
           {mode === 'auto-detecting' && (
             <span className="text-[10px] text-gray-300 font-mono bg-black/40 px-1.5 py-0.5 rounded">
-              Q{Math.round(detectionQuality)} E{Math.round(detectionStats.edge * 100)} R{Math.round(detectionStats.ring * 100)} P{Math.round(detectionStats.pattern * 100)}
+              Q{Math.round(detectionQuality)} E{Math.round(detectionStats.edge * 100)} R{Math.round(detectionStats.ring * 100)} P{Math.round(detectionStats.pattern * 100)} F{Math.round(detectionStats.fields * 100)}
             </span>
           )}
         </div>
@@ -823,7 +828,10 @@ function MobileCameraV3() {
           <div className="flex gap-2">
             <button
               onClick={handleConfirmCalibration}
-              disabled={detectionQuality < BOARD_CONFIRM_THRESHOLD}
+              disabled={
+                detectionQuality < BOARD_CONFIRM_THRESHOLD ||
+                detectionStats.fields < BOARD_FIELD_CONFIRM_THRESHOLD / 100
+              }
               className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:text-gray-400 text-white font-bold rounded-lg flex items-center justify-center gap-2"
             >
               <Check size={18} /> Bestätigen
