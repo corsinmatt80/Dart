@@ -55,9 +55,9 @@ const DOUBLE_OUTER_R = 1.0;         // End of double (board edge)
 const DART_DETECTION_COOLDOWN = 2000;
 const MIN_DART_AREA = 80;
 const DIFF_THRESHOLD = 30;
-const BOARD_DETECTION_INTERVAL = 4;
-const BOARD_DETECTION_MAX_SIDE = 640;
-const BOARD_CONFIRM_THRESHOLD = 60;
+const BOARD_DETECTION_INTERVAL = 3;
+const BOARD_DETECTION_MAX_SIDE = 720;
+const BOARD_CONFIRM_THRESHOLD = 40;
 
 // ============ COMPONENT ============
 function MobileCameraV3() {
@@ -75,6 +75,7 @@ function MobileCameraV3() {
   const [hitCount, setHitCount] = useState(0);
   const [lastHit, setLastHit] = useState<DartHit | null>(null);
   const [detectionQuality, setDetectionQuality] = useState(0);
+  const [detectionStats, setDetectionStats] = useState({ edge: 0, ring: 0, pattern: 0 });
   
   // Manual adjustment state
   const [manualEllipse, setManualEllipse] = useState<Ellipse>({
@@ -483,7 +484,18 @@ function MobileCameraV3() {
 
               detectionCtx.drawImage(video, 0, 0, detectW, detectH);
               const detectionFrame = detectionCtx.getImageData(0, 0, detectW, detectH);
-              const detection = detectDartboardEllipse(detectionFrame);
+
+              const previousScaled = calibrationRef.current.ellipse
+                ? {
+                    centerX: calibrationRef.current.ellipse.centerX * scale,
+                    centerY: calibrationRef.current.ellipse.centerY * scale,
+                    radiusX: calibrationRef.current.ellipse.radiusX * scale,
+                    radiusY: calibrationRef.current.ellipse.radiusY * scale,
+                    rotation: calibrationRef.current.ellipse.rotation,
+                  }
+                : null;
+
+              const detection = detectDartboardEllipse(detectionFrame, previousScaled);
 
               if (detection) {
                 const invScale = 1 / scale;
@@ -498,20 +510,36 @@ function MobileCameraV3() {
                 const stable = stabilizeEllipse(detectedEllipse);
                 calibrationRef.current.ellipse = stable;
                 detectionMissesRef.current = 0;
-                setDetectionQuality(detection.quality);
+                setDetectionQuality(prev => Math.round(prev * 0.45 + detection.quality * 0.55));
+                setDetectionStats({
+                  edge: detection.edgeScore,
+                  ring: detection.ringScore,
+                  pattern: detection.patternScore,
+                });
 
                 if (detection.quality > 80) {
                   setFeedback('🎯 Dartscheibe sicher erkannt! Tippe auf Bestätigen');
-                } else if (detection.quality > 60) {
+                } else if (detection.quality > 62) {
                   setFeedback('🎯 Dartscheibe erkannt - Kamera kurz ruhig halten');
                 } else {
-                  setFeedback('🔍 Dartscheibenmuster wird verifiziert...');
+                  setFeedback('🔍 Dartscheibenmuster wird stabilisiert...');
                 }
               } else {
                 detectionMissesRef.current += 1;
+                setDetectionQuality(prev => Math.max(0, prev - 4));
+                setDetectionStats(prev => ({
+                  edge: prev.edge * 0.92,
+                  ring: prev.ring * 0.92,
+                  pattern: prev.pattern * 0.92,
+                }));
+
+                if (detectionMissesRef.current > 20) {
+                  calibrationRef.current.ellipse = null;
+                  smoothedEllipseRef.current = null;
+                  detectionHistoryRef.current = [];
+                }
 
                 if (detectionMissesRef.current > 8) {
-                  setDetectionQuality(0);
                   if (!calibrationRef.current.ellipse) {
                     setFeedback('🔍 Suche Dartscheibenmuster...');
                   } else {
@@ -663,6 +691,7 @@ function MobileCameraV3() {
     detectionMissesRef.current = 0;
     setMode('auto-detecting');
     setDetectionQuality(0);
+    setDetectionStats({ edge: 0, ring: 0, pattern: 0 });
     setFeedback('🔍 Suche Dartscheibe...');
   };
 
@@ -687,6 +716,11 @@ function MobileCameraV3() {
               detectionQuality > 70 ? 'bg-green-600' : detectionQuality > 50 ? 'bg-yellow-600' : 'bg-red-600'
             }`}>
               {Math.round(detectionQuality)}%
+            </span>
+          )}
+          {mode === 'auto-detecting' && (
+            <span className="text-[10px] text-gray-300 font-mono bg-black/40 px-1.5 py-0.5 rounded">
+              Q{Math.round(detectionQuality)} E{Math.round(detectionStats.edge * 100)} R{Math.round(detectionStats.ring * 100)} P{Math.round(detectionStats.pattern * 100)}
             </span>
           )}
         </div>

@@ -27,48 +27,81 @@ interface Blob {
 
 interface FeatureMaps {
   mask: Uint8ClampedArray;
+  colorMask: Uint8ClampedArray;
   redGreen: Float32Array;
+  colorStrength: Float32Array;
   luminance: Float32Array;
   edge: Float32Array;
+}
+
+interface CandidateSeed {
+  ellipse: Ellipse;
+  source: 'blob' | 'previous' | 'center' | 'edge';
+}
+
+interface CandidateMetrics {
+  quality01: number;
+  patternScore: number;
+  edgeScore: number;
+  ringScore: number;
+  colorCoverageScore: number;
+  colorAlternationScore: number;
+  rimFitScore: number;
+  fillScore: number;
+  aspectScore: number;
+  sizeScore: number;
+  centerScore: number;
+}
+
+interface CandidateEval {
+  ellipse: Ellipse;
+  boundary: Point[];
+  metrics: CandidateMetrics;
 }
 
 type NumericArray = Float32Array | Uint8ClampedArray;
 
 const RING_BOUNDARIES = [0.08, 0.47, 0.54, 0.89, 1.0];
+const EDGE_RINGS = [0.47, 0.54, 0.89, 1.0];
 const HARMONIC_SEGMENTS = 20;
 
-function clamp01(value: number): number {
-  if (value <= 0) return 0;
-  if (value >= 1) return 1;
+function clamp(value: number, min: number, max: number): number {
+  if (value < min) return min;
+  if (value > max) return max;
   return value;
+}
+
+function clamp01(value: number): number {
+  return clamp(value, 0, 1);
+}
+
+function wrapAngle(angleRad: number): number {
+  return Math.atan2(Math.sin(angleRad), Math.cos(angleRad));
 }
 
 function quantile(values: number[], q: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const position = (sorted.length - 1) * q;
-  const base = Math.floor(position);
-  const rest = position - base;
-
-  const current = sorted[base] ?? sorted[sorted.length - 1];
-  const next = sorted[base + 1] ?? current;
-  return current + (next - current) * rest;
+  const lowerIndex = Math.floor(position);
+  const upperIndex = Math.min(sorted.length - 1, lowerIndex + 1);
+  const t = position - lowerIndex;
+  return sorted[lowerIndex] + (sorted[upperIndex] - sorted[lowerIndex]) * t;
 }
 
 function sampleBilinear(data: NumericArray, width: number, height: number, x: number, y: number): number {
   if (width <= 0 || height <= 0) return 0;
 
   if (x < 0 || y < 0 || x >= width - 1 || y >= height - 1) {
-    const clampedX = Math.max(0, Math.min(width - 1, Math.round(x)));
-    const clampedY = Math.max(0, Math.min(height - 1, Math.round(y)));
-    return data[clampedY * width + clampedX] ?? 0;
+    const cx = Math.max(0, Math.min(width - 1, Math.round(x)));
+    const cy = Math.max(0, Math.min(height - 1, Math.round(y)));
+    return data[cy * width + cx] ?? 0;
   }
 
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
   const x1 = x0 + 1;
   const y1 = y0 + 1;
-
   const tx = x - x0;
   const ty = y - y0;
 
@@ -107,24 +140,129 @@ function ellipseDistance(point: Point, ellipse: Ellipse): number {
 
   const localX = dx * cosR - dy * sinR;
   const localY = dx * sinR + dy * cosR;
+
   const nx = localX / Math.max(ellipse.radiusX, 1e-6);
   const ny = localY / Math.max(ellipse.radiusY, 1e-6);
   return Math.sqrt(nx * nx + ny * ny);
+}
+
+function sanitizeEllipse(ellipse: Ellipse, width: number, height: number): Ellipse {
+  let radiusX = clamp(ellipse.radiusX, 8, Math.min(width, height) * 0.65);
+  let radiusY = clamp(ellipse.radiusY, 8, Math.min(width, height) * 0.65);
+  let rotation = wrapAngle(ellipse.rotation);
+
+  if (radiusY > radiusX) {
+    const temp = radiusX;
+    radiusX = radiusY;
+    radiusY = temp;
+    rotation = wrapAngle(rotation + Math.PI / 2);
+  }
+
+  if (radiusY < radiusX * 0.38) {
+    radiusY = radiusX * 0.38;
+  }
+
+  return {
+    centerX: clamp(ellipse.centerX, 0, width - 1),
+    centerY: clamp(ellipse.centerY, 0, height - 1),
+    radiusX,
+    radiusY,
+    rotation,
+  };
+}
+
+function ellipseSimilarity(a: Ellipse, b: Ellipse): number {
+  const avgRadius = (a.radiusX + a.radiusY + b.radiusX + b.radiusY) / 4;
+  const centerDist = Math.hypot(a.centerX - b.centerX, a.centerY - b.centerY) / Math.max(avgRadius, 1);
+  const radiusDiff =
+    Math.abs(a.radiusX - b.radiusX) / Math.max(avgRadius, 1) +
+    Math.abs(a.radiusY - b.radiusY) / Math.max(avgRadius, 1);
+  const rotDiff = Math.abs(Math.atan2(Math.sin(a.rotation - b.rotation), Math.cos(a.rotation - b.rotation)));
+
+  const score = 1 - centerDist * 1.3 - radiusDiff * 0.8 - rotDiff * 0.45;
+  return clamp01(score);
+}
+
+function dilateBinary(mask: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(width * height);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let on = false;
+
+      for (let ky = -1; ky <= 1 && !on; ky++) {
+        const yy = y + ky;
+        if (yy < 0 || yy >= height) continue;
+
+        for (let kx = -1; kx <= 1; kx++) {
+          const xx = x + kx;
+          if (xx < 0 || xx >= width) continue;
+          if (mask[yy * width + xx] > 0) {
+            on = true;
+            break;
+          }
+        }
+      }
+
+      out[y * width + x] = on ? 255 : 0;
+    }
+  }
+
+  return out;
+}
+
+function erodeBinary(mask: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(width * height);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let on = true;
+
+      for (let ky = -1; ky <= 1 && on; ky++) {
+        const yy = y + ky;
+        if (yy < 0 || yy >= height) {
+          on = false;
+          break;
+        }
+
+        for (let kx = -1; kx <= 1; kx++) {
+          const xx = x + kx;
+          if (xx < 0 || xx >= width || mask[yy * width + xx] === 0) {
+            on = false;
+            break;
+          }
+        }
+      }
+
+      out[y * width + x] = on ? 255 : 0;
+    }
+  }
+
+  return out;
+}
+
+function cleanMask(mask: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
+  const closed = erodeBinary(dilateBinary(mask, width, height), width, height);
+  return dilateBinary(closed, width, height);
 }
 
 function buildFeatureMaps(imageData: ImageData): FeatureMaps {
   const { width, height, data } = imageData;
   const total = width * height;
 
+  const rawLuma = new Float32Array(total);
   const mask = new Uint8ClampedArray(total);
+  const colorMask = new Uint8ClampedArray(total);
   const redGreen = new Float32Array(total);
-  const luminance = new Float32Array(total);
+  const colorStrength = new Float32Array(total);
 
   for (let i = 0; i < data.length; i += 4) {
-    const index = i >> 2;
+    const idx = i >> 2;
     const r = data[i] / 255;
     const g = data[i + 1] / 255;
     const b = data[i + 2] / 255;
+
+    rawLuma[idx] = 0.299 * r + 0.587 * g + 0.114 * b;
 
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
@@ -141,38 +279,68 @@ function buildFeatureMaps(imageData: ImageData): FeatureMaps {
       }
     }
 
-    const saturation = max <= 1e-6 ? 0 : delta / max;
-    const value = max;
+    const sat = max <= 1e-6 ? 0 : delta / max;
+    const val = max;
 
-    const redHueDistance = Math.min(Math.abs(hue), 360 - Math.abs(hue));
+    const redDistance = Math.min(Math.abs(hue), 360 - Math.abs(hue));
 
     const redScore =
-      clamp01(1 - redHueDistance / 24) *
-      clamp01((saturation - 0.12) / 0.72) *
-      clamp01((value - 0.12) / 0.72);
+      clamp01(1 - redDistance / 28) *
+      clamp01((sat - 0.1) / 0.82) *
+      clamp01((val - 0.08) / 0.82);
 
     const greenScore =
-      clamp01(1 - Math.abs(hue - 120) / 32) *
-      clamp01((saturation - 0.1) / 0.76) *
-      clamp01((value - 0.1) / 0.78);
+      clamp01(1 - Math.abs(hue - 120) / 40) *
+      clamp01((sat - 0.09) / 0.84) *
+      clamp01((val - 0.08) / 0.84);
 
     const darkScore =
-      clamp01((0.42 - value) / 0.42) *
-      clamp01((0.62 - saturation) / 0.62);
+      clamp01((0.46 - val) / 0.46) *
+      clamp01((0.68 - sat) / 0.68);
 
     const lightScore =
-      clamp01((value - 0.46) / 0.54) *
-      clamp01((0.45 - saturation) / 0.45);
+      clamp01((val - 0.42) / 0.58) *
+      clamp01((0.52 - sat) / 0.52);
 
-    const boardLikelihood = Math.max(redScore, greenScore, darkScore * 0.9, lightScore * 0.9);
+    const colorScore = Math.max(redScore, greenScore);
+    const boardScore = Math.max(redScore * 1.05, greenScore * 1.05, darkScore * 0.9, lightScore * 0.8);
 
-    mask[index] = boardLikelihood > 0.3 ? 255 : 0;
-    redGreen[index] = redScore - greenScore;
-    luminance[index] = 0.299 * r + 0.587 * g + 0.114 * b;
+    mask[idx] = boardScore > 0.14 ? 255 : 0;
+    colorMask[idx] = colorScore > 0.1 ? 255 : 0;
+    redGreen[idx] = redScore - greenScore;
+    colorStrength[idx] = colorScore;
+  }
+
+  const luminance = new Float32Array(total);
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = y * width + x;
+
+      const blurred =
+        rawLuma[idx - width - 1] +
+        2 * rawLuma[idx - width] +
+        rawLuma[idx - width + 1] +
+        2 * rawLuma[idx - 1] +
+        4 * rawLuma[idx] +
+        2 * rawLuma[idx + 1] +
+        rawLuma[idx + width - 1] +
+        2 * rawLuma[idx + width] +
+        rawLuma[idx + width + 1];
+
+      luminance[idx] = blurred / 16;
+    }
+  }
+
+  for (let x = 0; x < width; x++) {
+    luminance[x] = rawLuma[x];
+    luminance[(height - 1) * width + x] = rawLuma[(height - 1) * width + x];
+  }
+  for (let y = 0; y < height; y++) {
+    luminance[y * width] = rawLuma[y * width];
+    luminance[y * width + (width - 1)] = rawLuma[y * width + (width - 1)];
   }
 
   const edge = new Float32Array(total);
-
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
       const idx = y * width + x;
@@ -194,75 +362,18 @@ function buildFeatureMaps(imageData: ImageData): FeatureMaps {
         luminance[idx + width + 1];
 
       const magnitude = Math.sqrt(gx * gx + gy * gy);
-      edge[idx] = clamp01(magnitude * 1.1);
+      edge[idx] = clamp01(magnitude * 1.35);
     }
   }
 
-  return { mask, redGreen, luminance, edge };
-}
-
-function dilateBinary(mask: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(width * height);
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let hasNeighbor = false;
-
-      for (let ky = -1; ky <= 1 && !hasNeighbor; ky++) {
-        const ny = y + ky;
-        if (ny < 0 || ny >= height) continue;
-
-        for (let kx = -1; kx <= 1; kx++) {
-          const nx = x + kx;
-          if (nx < 0 || nx >= width) continue;
-
-          if (mask[ny * width + nx] > 0) {
-            hasNeighbor = true;
-            break;
-          }
-        }
-      }
-
-      out[y * width + x] = hasNeighbor ? 255 : 0;
-    }
-  }
-
-  return out;
-}
-
-function erodeBinary(mask: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(width * height);
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let allNeighbors = true;
-
-      for (let ky = -1; ky <= 1 && allNeighbors; ky++) {
-        const ny = y + ky;
-        if (ny < 0 || ny >= height) {
-          allNeighbors = false;
-          break;
-        }
-
-        for (let kx = -1; kx <= 1; kx++) {
-          const nx = x + kx;
-          if (nx < 0 || nx >= width || mask[ny * width + nx] === 0) {
-            allNeighbors = false;
-            break;
-          }
-        }
-      }
-
-      out[y * width + x] = allNeighbors ? 255 : 0;
-    }
-  }
-
-  return out;
-}
-
-function closeAndOpenMask(mask: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
-  const closed = erodeBinary(dilateBinary(mask, width, height), width, height);
-  return dilateBinary(erodeBinary(closed, width, height), width, height);
+  return {
+    mask,
+    colorMask,
+    redGreen,
+    colorStrength,
+    luminance,
+    edge,
+  };
 }
 
 function findTopBlobs(
@@ -278,12 +389,12 @@ function findTopBlobs(
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const startIdx = y * width + x;
-      if (mask[startIdx] === 0 || visited[startIdx] !== 0) continue;
+      const idx = y * width + x;
+      if (mask[idx] === 0 || visited[idx] !== 0) continue;
 
       const stackX: number[] = [x];
       const stackY: number[] = [y];
-      visited[startIdx] = 1;
+      visited[idx] = 1;
 
       let area = 0;
       let sumX = 0;
@@ -294,29 +405,29 @@ function findTopBlobs(
       let maxY = y;
 
       while (stackX.length > 0) {
-        const currentX = stackX.pop() as number;
-        const currentY = stackY.pop() as number;
+        const cx = stackX.pop() as number;
+        const cy = stackY.pop() as number;
 
         area += 1;
-        sumX += currentX;
-        sumY += currentY;
+        sumX += cx;
+        sumY += cy;
 
-        if (currentX < minX) minX = currentX;
-        if (currentX > maxX) maxX = currentX;
-        if (currentY < minY) minY = currentY;
-        if (currentY > maxY) maxY = currentY;
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
 
-        for (let ny = currentY - 1; ny <= currentY + 1; ny++) {
+        for (let ny = cy - 1; ny <= cy + 1; ny++) {
           if (ny < 0 || ny >= height) continue;
 
-          for (let nx = currentX - 1; nx <= currentX + 1; nx++) {
+          for (let nx = cx - 1; nx <= cx + 1; nx++) {
             if (nx < 0 || nx >= width) continue;
-            if (nx === currentX && ny === currentY) continue;
+            if (nx === cx && ny === cy) continue;
 
-            const neighborIdx = ny * width + nx;
-            if (mask[neighborIdx] === 0 || visited[neighborIdx] !== 0) continue;
+            const nIdx = ny * width + nx;
+            if (mask[nIdx] === 0 || visited[nIdx] !== 0) continue;
 
-            visited[neighborIdx] = 1;
+            visited[nIdx] = 1;
             stackX.push(nx);
             stackY.push(ny);
           }
@@ -345,55 +456,79 @@ function findTopBlobs(
   return blobs.slice(0, limit);
 }
 
-function extractBoundaryPoints(mask: Uint8ClampedArray, edge: Float32Array, width: number, height: number, blob: Blob): Point[] {
+function sampleBoundaryFromBlob(
+  mask: Uint8ClampedArray,
+  edge: Float32Array,
+  width: number,
+  height: number,
+  blob: Blob,
+): Point[] {
   const points: Point[] = [];
   const centerX = blob.centroid.x;
   const centerY = blob.centroid.y;
   const maxRadius = Math.min(
-    Math.hypot(blob.boundingBox.width, blob.boundingBox.height) * 0.72,
-    Math.min(width, height) * 0.58,
+    Math.hypot(blob.boundingBox.width, blob.boundingBox.height) * 0.85,
+    Math.min(width, height) * 0.65,
   );
 
-  for (let degree = 0; degree < 360; degree += 4) {
+  for (let degree = 0; degree < 360; degree += 3) {
     const angle = (degree * Math.PI) / 180;
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
 
-    let firstInside = -1;
-    let lastInside = -1;
+    let entered = false;
+    let exitRadius = -1;
+    let wasInside = false;
 
-    for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let radius = 2; radius <= maxRadius; radius += 1) {
       const x = Math.round(centerX + dx * radius);
       const y = Math.round(centerY + dy * radius);
-
       if (x < 0 || x >= width || y < 0 || y >= height) break;
 
-      const isInside = mask[y * width + x] > 0;
+      const inside = mask[y * width + x] > 0;
+      if (inside) entered = true;
 
-      if (isInside) {
-        if (firstInside < 0) firstInside = radius;
-        lastInside = radius;
-      } else if (firstInside >= 0) {
+      if (entered && wasInside && !inside) {
+        exitRadius = radius - 1;
         break;
       }
+
+      wasInside = inside;
     }
 
-    if (lastInside < 8) continue;
+    if (exitRadius < 0) {
+      if (!entered) continue;
+      exitRadius = maxRadius;
+    }
 
-    let bestRadius = lastInside;
-    let bestEdge = -1;
-    const startSearch = Math.max(1, lastInside - 3);
-    const endSearch = Math.min(maxRadius, lastInside + 3);
+    let bestRadius = exitRadius;
+    let bestScore = -Infinity;
 
-    for (let rr = startSearch; rr <= endSearch; rr += 1) {
+    const start = Math.max(4, exitRadius - 7);
+    const end = Math.min(maxRadius, exitRadius + 7);
+
+    for (let rr = start; rr <= end; rr += 1) {
       const x = Math.round(centerX + dx * rr);
       const y = Math.round(centerY + dy * rr);
+      const inX = Math.round(centerX + dx * Math.max(1, rr - 2));
+      const inY = Math.round(centerY + dy * Math.max(1, rr - 2));
+      const outX = Math.round(centerX + dx * Math.min(maxRadius, rr + 2));
+      const outY = Math.round(centerY + dy * Math.min(maxRadius, rr + 2));
 
-      if (x < 0 || x >= width || y < 0 || y >= height) continue;
+      if (
+        x < 0 || x >= width || y < 0 || y >= height ||
+        inX < 0 || inX >= width || inY < 0 || inY >= height ||
+        outX < 0 || outX >= width || outY < 0 || outY >= height
+      ) {
+        continue;
+      }
 
-      const edgeStrength = edge[y * width + x];
-      if (edgeStrength > bestEdge) {
-        bestEdge = edgeStrength;
+      const edgeValue = edge[y * width + x];
+      const transition = (mask[inY * width + inX] > 0 ? 1 : 0) - (mask[outY * width + outX] > 0 ? 1 : 0);
+      const score = edgeValue * 1.2 + transition * 0.8;
+
+      if (score > bestScore) {
+        bestScore = score;
         bestRadius = rr;
       }
     }
@@ -402,6 +537,44 @@ function extractBoundaryPoints(mask: Uint8ClampedArray, edge: Float32Array, widt
       x: centerX + dx * bestRadius,
       y: centerY + dy * bestRadius,
     });
+  }
+
+  return points;
+}
+
+function sampleBoundaryAroundEllipse(
+  mask: Uint8ClampedArray,
+  edge: Float32Array,
+  width: number,
+  height: number,
+  ellipse: Ellipse,
+): Point[] {
+  const points: Point[] = [];
+
+  for (let degree = 0; degree < 360; degree += 4) {
+    const angle = (degree * Math.PI) / 180;
+
+    let bestScale = 1;
+    let bestScore = -Infinity;
+
+    for (let scale = 0.82; scale <= 1.2; scale += 0.03) {
+      const p = ellipsePoint(ellipse, scale, angle);
+      const inside = ellipsePoint(ellipse, Math.max(0, scale - 0.04), angle);
+      const outside = ellipsePoint(ellipse, Math.min(1.25, scale + 0.04), angle);
+
+      const edgeValue = sampleBilinear(edge, width, height, p.x, p.y);
+      const insideValue = sampleBilinear(mask, width, height, inside.x, inside.y) / 255;
+      const outsideValue = sampleBilinear(mask, width, height, outside.x, outside.y) / 255;
+      const transition = insideValue - outsideValue;
+
+      const score = edgeValue * 1.25 + transition * 0.9 - Math.abs(scale - 1) * 0.2;
+      if (score > bestScore) {
+        bestScore = score;
+        bestScale = scale;
+      }
+    }
+
+    points.push(ellipsePoint(ellipse, bestScale, angle));
   }
 
   return points;
@@ -420,29 +593,28 @@ function fitEllipse(points: Point[]): Ellipse | null {
   const centerX = sumX / points.length;
   const centerY = sumY / points.length;
 
-  let xx = 0;
-  let xy = 0;
-  let yy = 0;
+  let covXX = 0;
+  let covXY = 0;
+  let covYY = 0;
 
   for (const point of points) {
     const dx = point.x - centerX;
     const dy = point.y - centerY;
-    xx += dx * dx;
-    xy += dx * dy;
-    yy += dy * dy;
+    covXX += dx * dx;
+    covXY += dx * dy;
+    covYY += dy * dy;
   }
 
-  xx /= points.length;
-  xy /= points.length;
-  yy /= points.length;
+  covXX /= points.length;
+  covXY /= points.length;
+  covYY /= points.length;
 
-  let rotation = 0.5 * Math.atan2(2 * xy, xx - yy);
+  let rotation = 0.5 * Math.atan2(2 * covXY, covXX - covYY);
   const cosR = Math.cos(rotation);
   const sinR = Math.sin(rotation);
 
   const absU: number[] = [];
   const absV: number[] = [];
-
   let sumU2 = 0;
   let sumV2 = 0;
 
@@ -458,14 +630,13 @@ function fitEllipse(points: Point[]): Ellipse | null {
     sumV2 += v * v;
   }
 
-  const radiusFromVarianceU = Math.sqrt(Math.max((sumU2 / points.length) * 2, 1));
-  const radiusFromVarianceV = Math.sqrt(Math.max((sumV2 / points.length) * 2, 1));
+  const radiusVarianceU = Math.sqrt(Math.max((sumU2 / points.length) * 2, 1));
+  const radiusVarianceV = Math.sqrt(Math.max((sumV2 / points.length) * 2, 1));
+  const radiusQuantileU = quantile(absU, 0.88) * 1.04;
+  const radiusQuantileV = quantile(absV, 0.88) * 1.04;
 
-  const radiusFromQuantileU = quantile(absU, 0.9) * 1.02;
-  const radiusFromQuantileV = quantile(absV, 0.9) * 1.02;
-
-  let radiusX = (radiusFromVarianceU + radiusFromQuantileU) * 0.5;
-  let radiusY = (radiusFromVarianceV + radiusFromQuantileV) * 0.5;
+  let radiusX = radiusQuantileU * 0.7 + radiusVarianceU * 0.3;
+  let radiusY = radiusQuantileV * 0.7 + radiusVarianceV * 0.3;
 
   if (!Number.isFinite(radiusX) || !Number.isFinite(radiusY)) return null;
 
@@ -478,51 +649,202 @@ function fitEllipse(points: Point[]): Ellipse | null {
 
   if (radiusX < 8 || radiusY < 8) return null;
 
-  rotation = Math.atan2(Math.sin(rotation), Math.cos(rotation));
-
   return {
     centerX,
     centerY,
     radiusX,
     radiusY,
-    rotation,
+    rotation: wrapAngle(rotation),
   };
 }
 
-function computeRimFitScore(points: Point[], ellipse: Ellipse): number {
-  if (points.length === 0) return 0;
+function computeRimFitScore(boundary: Point[], ellipse: Ellipse): number {
+  if (boundary.length === 0) return 0;
 
-  let errorSum = 0;
-  for (const point of points) {
-    const radialDistance = ellipseDistance(point, ellipse);
-    errorSum += Math.abs(radialDistance - 1);
+  let sumError = 0;
+  let sumSqError = 0;
+
+  for (const point of boundary) {
+    const distance = ellipseDistance(point, ellipse);
+    const error = Math.abs(distance - 1);
+    sumError += error;
+    sumSqError += error * error;
   }
 
-  const meanError = errorSum / points.length;
-  return clamp01(1 - meanError * 2.7);
+  const mean = sumError / boundary.length;
+  const variance = Math.max(0, sumSqError / boundary.length - mean * mean);
+  const stdDev = Math.sqrt(variance);
+
+  return clamp01(1 - mean * 2.8 - stdDev * 1.8);
 }
 
 function computeEdgeScore(edge: Float32Array, width: number, height: number, ellipse: Ellipse): number {
-  let sum = 0;
-  let strong = 0;
+  const weights = [0.2, 0.24, 0.22, 0.34];
+  let weightedScore = 0;
+
+  for (let ringIndex = 0; ringIndex < EDGE_RINGS.length; ringIndex++) {
+    const radius = EDGE_RINGS[ringIndex];
+    let sum = 0;
+    let strongCount = 0;
+    let sampleCount = 0;
+
+    for (let degree = 0; degree < 360; degree += 4) {
+      const angle = (degree * Math.PI) / 180;
+      const point = ellipsePoint(ellipse, radius, angle);
+      const edgeValue = sampleBilinear(edge, width, height, point.x, point.y);
+      sum += edgeValue;
+      if (edgeValue > 0.12) strongCount += 1;
+      sampleCount += 1;
+    }
+
+    if (sampleCount === 0) continue;
+
+    const avg = sum / sampleCount;
+    const continuity = strongCount / sampleCount;
+    const ringScore = clamp01((avg - 0.05) / 0.25) * 0.6 + continuity * 0.4;
+
+    weightedScore += ringScore * weights[ringIndex];
+  }
+
+  return clamp01(weightedScore);
+}
+
+function computeRingScore(luminance: Float32Array, width: number, height: number, ellipse: Ellipse): number {
+  let contrastSum = 0;
   let count = 0;
 
-  for (let degree = 0; degree < 360; degree += 4) {
+  for (let degree = 0; degree < 360; degree += 6) {
     const angle = (degree * Math.PI) / 180;
-    const point = ellipsePoint(ellipse, 1.0, angle);
-    const value = sampleBilinear(edge, width, height, point.x, point.y);
 
-    sum += value;
-    if (value > 0.12) strong += 1;
-    count += 1;
+    for (const boundary of RING_BOUNDARIES) {
+      const innerPoint = ellipsePoint(ellipse, Math.max(0, boundary - 0.02), angle);
+      const outerPoint = ellipsePoint(ellipse, Math.min(1.1, boundary + 0.02), angle);
+
+      const innerLuma = sampleBilinear(luminance, width, height, innerPoint.x, innerPoint.y);
+      const outerLuma = sampleBilinear(luminance, width, height, outerPoint.x, outerPoint.y);
+      contrastSum += Math.abs(outerLuma - innerLuma);
+      count += 1;
+    }
   }
 
   if (count === 0) return 0;
+  const avgContrast = contrastSum / count;
+  return clamp01((avgContrast - 0.015) / 0.09);
+}
 
-  const average = sum / count;
-  const continuity = strong / count;
-  const score = clamp01((average - 0.06) / 0.28) * 0.6 + continuity * 0.4;
-  return clamp01(score);
+function computePatternScore(redGreen: Float32Array, width: number, height: number, ellipse: Ellipse): number {
+  let harmonicCos = 0;
+  let harmonicSin = 0;
+  let signalMagnitude = 0;
+
+  for (let degree = 0; degree < 360; degree += 3) {
+    const angle = (degree * Math.PI) / 180;
+
+    const triplePoint = ellipsePoint(ellipse, 0.505, angle);
+    const doublePoint = ellipsePoint(ellipse, 0.945, angle);
+
+    const tripleSignal = sampleBilinear(redGreen, width, height, triplePoint.x, triplePoint.y);
+    const doubleSignal = sampleBilinear(redGreen, width, height, doublePoint.x, doublePoint.y);
+
+    const signal = tripleSignal * 0.68 + doubleSignal * 0.32;
+
+    const harmonicAngle = angle * HARMONIC_SEGMENTS;
+    harmonicCos += signal * Math.cos(harmonicAngle);
+    harmonicSin += signal * Math.sin(harmonicAngle);
+    signalMagnitude += Math.abs(signal);
+  }
+
+  if (signalMagnitude < 1e-5) return 0;
+
+  const amplitude = Math.sqrt(harmonicCos * harmonicCos + harmonicSin * harmonicSin) / signalMagnitude;
+  return clamp01((amplitude - 0.045) / 0.28);
+}
+
+function computeColorCoverageScore(
+  colorStrength: Float32Array,
+  width: number,
+  height: number,
+  ellipse: Ellipse,
+): number {
+  const rings = [0.505, 0.945];
+  let present = 0;
+  let count = 0;
+
+  for (const radius of rings) {
+    for (let degree = 0; degree < 360; degree += 3) {
+      const angle = (degree * Math.PI) / 180;
+      const point = ellipsePoint(ellipse, radius, angle);
+      const value = sampleBilinear(colorStrength, width, height, point.x, point.y);
+      if (value > 0.085) {
+        present += 1;
+      }
+      count += 1;
+    }
+  }
+
+  if (count === 0) return 0;
+  const ratio = present / count;
+  return clamp01((ratio - 0.16) / 0.52);
+}
+
+function computeColorAlternationScore(
+  redGreen: Float32Array,
+  colorStrength: Float32Array,
+  width: number,
+  height: number,
+  ellipse: Ellipse,
+): number {
+  const rings = [0.505, 0.945];
+  let total = 0;
+
+  for (const radius of rings) {
+    const segments = new Array<number>(20).fill(0);
+    const segmentWeights = new Array<number>(20).fill(0);
+
+    for (let degree = 0; degree < 360; degree += 1.5) {
+      const angle = (degree * Math.PI) / 180;
+      const point = ellipsePoint(ellipse, radius, angle);
+      const rg = sampleBilinear(redGreen, width, height, point.x, point.y);
+      const strength = sampleBilinear(colorStrength, width, height, point.x, point.y);
+
+      const segment = Math.floor(((degree + 9) % 360) / 18);
+      segments[segment] += rg * (0.4 + strength * 0.9);
+      segmentWeights[segment] += 1;
+    }
+
+    for (let i = 0; i < 20; i++) {
+      if (segmentWeights[i] > 0) {
+        segments[i] /= segmentWeights[i];
+      }
+    }
+
+    let adjacency = 0;
+    let magnitude = 0;
+    let transitions = 0;
+
+    for (let i = 0; i < 20; i++) {
+      const current = segments[i];
+      const next = segments[(i + 1) % 20];
+      adjacency += Math.abs(current - next);
+      magnitude += Math.abs(current);
+      if (current * next < 0) {
+        transitions += 1;
+      }
+    }
+
+    if (magnitude < 1e-5) continue;
+
+    const adjacencyRatio = adjacency / (magnitude + 1e-6);
+    const transitionRatio = transitions / 20;
+
+    const localScore =
+      clamp01((adjacencyRatio - 1.2) / 2.2) * 0.65 +
+      clamp01((transitionRatio - 0.35) / 0.5) * 0.35;
+
+    total += localScore;
+  }
+
+  return clamp01(total / rings.length);
 }
 
 function computeFillScore(mask: Uint8ClampedArray, width: number, height: number, ellipse: Ellipse): number {
@@ -543,164 +865,347 @@ function computeFillScore(mask: Uint8ClampedArray, width: number, height: number
   }
 
   if (insideCount === 0) return 0;
-
   const ratio = filledCount / insideCount;
-  return clamp01(1 - Math.abs(ratio - 0.62) / 0.42);
+  return clamp01(1 - Math.abs(ratio - 0.58) / 0.5);
 }
 
-function computeRingScore(luminance: Float32Array, width: number, height: number, ellipse: Ellipse): number {
-  let contrastSum = 0;
-  let count = 0;
-
-  for (let degree = 0; degree < 360; degree += 6) {
-    const angle = (degree * Math.PI) / 180;
-
-    for (const boundary of RING_BOUNDARIES) {
-      const inner = Math.max(0, boundary - 0.018);
-      const outer = Math.min(1.08, boundary + 0.018);
-
-      const innerPoint = ellipsePoint(ellipse, inner, angle);
-      const outerPoint = ellipsePoint(ellipse, outer, angle);
-
-      const innerLuma = sampleBilinear(luminance, width, height, innerPoint.x, innerPoint.y);
-      const outerLuma = sampleBilinear(luminance, width, height, outerPoint.x, outerPoint.y);
-
-      contrastSum += Math.abs(outerLuma - innerLuma);
-      count += 1;
-    }
-  }
-
-  if (count === 0) return 0;
-
-  const averageContrast = contrastSum / count;
-  return clamp01((averageContrast - 0.02) / 0.11);
-}
-
-function computePatternScore(redGreen: Float32Array, width: number, height: number, ellipse: Ellipse): { score: number; phaseDeg: number } {
-  let harmonicCos = 0;
-  let harmonicSin = 0;
-  let signalMagnitude = 0;
-
-  for (let degree = 0; degree < 360; degree += 3) {
-    const angle = (degree * Math.PI) / 180;
-
-    const triplePoint = ellipsePoint(ellipse, 0.505, angle);
-    const doublePoint = ellipsePoint(ellipse, 0.945, angle);
-
-    const tripleSignal = sampleBilinear(redGreen, width, height, triplePoint.x, triplePoint.y);
-    const doubleSignal = sampleBilinear(redGreen, width, height, doublePoint.x, doublePoint.y);
-    const combinedSignal = tripleSignal * 0.65 + doubleSignal * 0.35;
-
-    const harmonicAngle = angle * HARMONIC_SEGMENTS;
-    harmonicCos += combinedSignal * Math.cos(harmonicAngle);
-    harmonicSin += combinedSignal * Math.sin(harmonicAngle);
-    signalMagnitude += Math.abs(combinedSignal);
-  }
-
-  if (signalMagnitude < 1e-5) {
-    return { score: 0, phaseDeg: 0 };
-  }
-
-  const amplitude = Math.sqrt(harmonicCos * harmonicCos + harmonicSin * harmonicSin) / signalMagnitude;
-  const score = clamp01((amplitude - 0.07) / 0.36);
-
-  const phase = Math.atan2(harmonicSin, harmonicCos) / HARMONIC_SEGMENTS;
-  const phaseDeg = ((phase * 180) / Math.PI + 360) % 360;
-
-  return { score, phaseDeg };
-}
-
-function scoreCandidate(
+function scoreEllipse(
   ellipse: Ellipse,
-  boundaryPoints: Point[],
+  boundary: Point[],
   maps: FeatureMaps,
   width: number,
   height: number,
-): DartboardDetectionResult {
-  const rimFitScore = computeRimFitScore(boundaryPoints, ellipse);
+): CandidateMetrics {
+  const rimFitScore = computeRimFitScore(boundary, ellipse);
   const edgeScore = computeEdgeScore(maps.edge, width, height, ellipse);
-  const fillScore = computeFillScore(maps.mask, width, height, ellipse);
   const ringScore = computeRingScore(maps.luminance, width, height, ellipse);
-  const pattern = computePatternScore(maps.redGreen, width, height, ellipse);
-  const patternScore = pattern.score;
+  const patternScore = computePatternScore(maps.redGreen, width, height, ellipse);
+  const colorCoverageScore = computeColorCoverageScore(maps.colorStrength, width, height, ellipse);
+  const colorAlternationScore = computeColorAlternationScore(
+    maps.redGreen,
+    maps.colorStrength,
+    width,
+    height,
+    ellipse,
+  );
+  const fillScore = computeFillScore(maps.mask, width, height, ellipse);
 
   const aspectRatio = Math.min(ellipse.radiusX, ellipse.radiusY) / Math.max(ellipse.radiusX, ellipse.radiusY);
-  const aspectScore = clamp01((aspectRatio - 0.52) / 0.4);
+  const aspectScore = clamp01((aspectRatio - 0.42) / 0.5);
 
   const avgRadius = (ellipse.radiusX + ellipse.radiusY) * 0.5;
   const relativeSize = avgRadius / Math.max(1, Math.min(width, height));
-  const sizeScore = clamp01(1 - Math.abs(relativeSize - 0.32) / 0.24);
+  const sizeScore = clamp01(1 - Math.abs(relativeSize - 0.31) / 0.28);
 
   const centerDistance =
     Math.hypot(ellipse.centerX - width * 0.5, ellipse.centerY - height * 0.5) /
     Math.max(1, Math.min(width, height));
-  const centerScore = clamp01(1 - centerDistance / 0.42);
+  const centerScore = clamp01(1 - centerDistance / 0.48);
 
   let quality01 =
-    rimFitScore * 0.24 +
-    edgeScore * 0.18 +
-    ringScore * 0.18 +
-    patternScore * 0.2 +
-    fillScore * 0.1 +
-    aspectScore * 0.05 +
-    sizeScore * 0.03 +
-    centerScore * 0.02;
+    rimFitScore * 0.2 +
+    edgeScore * 0.2 +
+    ringScore * 0.16 +
+    patternScore * 0.11 +
+    colorCoverageScore * 0.16 +
+    colorAlternationScore * 0.12 +
+    fillScore * 0.03 +
+    aspectScore * 0.01 +
+    sizeScore * 0.01;
 
-  if (patternScore < 0.08 && ringScore < 0.12) {
-    quality01 *= 0.65;
-  }
-  if (edgeScore < 0.12) {
-    quality01 *= 0.7;
-  }
-  if (aspectScore < 0.2 || sizeScore < 0.15) {
-    quality01 *= 0.45;
-  }
+  if (rimFitScore < 0.1) quality01 *= 0.55;
+  if (edgeScore < 0.07) quality01 *= 0.56;
+  if (ringScore < 0.05 && patternScore < 0.05 && colorAlternationScore < 0.05) quality01 *= 0.72;
+  if (colorCoverageScore < 0.04 && edgeScore < 0.1) quality01 *= 0.72;
+  if (aspectScore < 0.14) quality01 *= 0.7;
+  if (sizeScore < 0.1) quality01 *= 0.7;
 
-  const quality = Math.round(clamp01(quality01) * 100);
+  quality01 += centerScore * 0.01;
 
   return {
-    ellipse,
-    quality,
+    quality01: clamp01(quality01),
     patternScore,
     edgeScore,
     ringScore,
+    colorCoverageScore,
+    colorAlternationScore,
+    rimFitScore,
+    fillScore,
+    aspectScore,
+    sizeScore,
+    centerScore,
   };
 }
 
-export function detectDartboardEllipse(imageData: ImageData): DartboardDetectionResult | null {
-  const { width, height } = imageData;
-  const frameArea = width * height;
+function evaluateEllipse(ellipse: Ellipse, maps: FeatureMaps, width: number, height: number): CandidateEval {
+  const sanitized = sanitizeEllipse(ellipse, width, height);
+  const boundary = sampleBoundaryAroundEllipse(maps.mask, maps.edge, width, height, sanitized);
+  const metrics = scoreEllipse(sanitized, boundary, maps, width, height);
 
-  if (frameArea < 160 * 120) return null;
+  return {
+    ellipse: sanitized,
+    boundary,
+    metrics,
+  };
+}
 
-  const maps = buildFeatureMaps(imageData);
-  const cleanedMask = closeAndOpenMask(maps.mask, width, height);
+function optimizeEllipse(seed: Ellipse, maps: FeatureMaps, width: number, height: number): CandidateEval {
+  let best = evaluateEllipse(seed, maps, width, height);
 
-  const minBlobArea = Math.floor(frameArea * 0.03);
-  const maxBlobArea = Math.floor(frameArea * 0.72);
+  let stepCenter = Math.max(2, ((best.ellipse.radiusX + best.ellipse.radiusY) * 0.5) * 0.12);
+  let stepRadius = Math.max(2, ((best.ellipse.radiusX + best.ellipse.radiusY) * 0.5) * 0.12);
+  let stepRotation = 0.12;
 
-  const candidateBlobs = findTopBlobs(cleanedMask, width, height, minBlobArea, maxBlobArea, 6);
-  if (candidateBlobs.length === 0) return null;
+  for (let iteration = 0; iteration < 5; iteration++) {
+    let improved = false;
 
-  let bestCandidate: DartboardDetectionResult | null = null;
+    const proposals: Ellipse[] = [
+      { ...best.ellipse, centerX: best.ellipse.centerX - stepCenter },
+      { ...best.ellipse, centerX: best.ellipse.centerX + stepCenter },
+      { ...best.ellipse, centerY: best.ellipse.centerY - stepCenter },
+      { ...best.ellipse, centerY: best.ellipse.centerY + stepCenter },
+      { ...best.ellipse, radiusX: best.ellipse.radiusX - stepRadius },
+      { ...best.ellipse, radiusX: best.ellipse.radiusX + stepRadius },
+      { ...best.ellipse, radiusY: best.ellipse.radiusY - stepRadius },
+      { ...best.ellipse, radiusY: best.ellipse.radiusY + stepRadius },
+      { ...best.ellipse, rotation: best.ellipse.rotation - stepRotation },
+      { ...best.ellipse, rotation: best.ellipse.rotation + stepRotation },
+    ];
 
-  for (const blob of candidateBlobs) {
-    const boundaryPoints = extractBoundaryPoints(cleanedMask, maps.edge, width, height, blob);
-    if (boundaryPoints.length < 48) continue;
+    for (const proposal of proposals) {
+      const evalCandidate = evaluateEllipse(proposal, maps, width, height);
+      if (evalCandidate.metrics.quality01 > best.metrics.quality01 + 0.0015) {
+        best = evalCandidate;
+        improved = true;
+      }
+    }
 
-    const ellipse = fitEllipse(boundaryPoints);
-    if (!ellipse) continue;
-
-    const candidate = scoreCandidate(ellipse, boundaryPoints, maps, width, height);
-
-    if (!bestCandidate || candidate.quality > bestCandidate.quality) {
-      bestCandidate = candidate;
+    if (!improved) {
+      stepCenter *= 0.62;
+      stepRadius *= 0.62;
+      stepRotation *= 0.62;
+    } else {
+      stepCenter *= 0.72;
+      stepRadius *= 0.72;
+      stepRotation *= 0.72;
     }
   }
 
-  if (!bestCandidate || bestCandidate.quality < 45) {
+  return best;
+}
+
+function estimateEdgeSeed(edge: Float32Array, width: number, height: number): Ellipse | null {
+  let sumW = 0;
+  let sumX = 0;
+  let sumY = 0;
+
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      const value = edge[y * width + x];
+      if (value < 0.14) continue;
+
+      const weight = value - 0.14;
+      sumW += weight;
+      sumX += x * weight;
+      sumY += y * weight;
+    }
+  }
+
+  if (sumW < 12) return null;
+
+  const centerX = sumX / sumW;
+  const centerY = sumY / sumW;
+  const distances: number[] = [];
+
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      const value = edge[y * width + x];
+      if (value < 0.2) continue;
+
+      distances.push(Math.hypot(x - centerX, y - centerY));
+    }
+  }
+
+  if (distances.length < 40) return null;
+
+  const radius = quantile(distances, 0.84);
+  if (!Number.isFinite(radius) || radius < Math.min(width, height) * 0.08) return null;
+
+  return {
+    centerX,
+    centerY,
+    radiusX: radius,
+    radiusY: radius,
+    rotation: 0,
+  };
+}
+
+function addSeedIfDistinct(seeds: CandidateSeed[], seed: CandidateSeed): void {
+  for (const existing of seeds) {
+    const similarity = ellipseSimilarity(existing.ellipse, seed.ellipse);
+    if (similarity > 0.78) {
+      return;
+    }
+  }
+
+  seeds.push(seed);
+}
+
+function generateSeeds(
+  maps: FeatureMaps,
+  width: number,
+  height: number,
+  previousEllipse?: Ellipse | null,
+): CandidateSeed[] {
+  const seeds: CandidateSeed[] = [];
+  const frameArea = width * height;
+  const minBlobArea = Math.floor(frameArea * 0.01);
+  const colorMinBlobArea = Math.floor(frameArea * 0.0025);
+  const maxBlobArea = Math.floor(frameArea * 0.8);
+
+  if (previousEllipse) {
+    addSeedIfDistinct(seeds, {
+      ellipse: sanitizeEllipse(previousEllipse, width, height),
+      source: 'previous',
+    });
+  }
+
+  const addSeedsFromBlobs = (blobMask: Uint8ClampedArray, localMinBlobArea: number, maxCount: number) => {
+    const blobs = findTopBlobs(blobMask, width, height, localMinBlobArea, maxBlobArea, maxCount);
+
+    for (const blob of blobs) {
+      const boundary = sampleBoundaryFromBlob(blobMask, maps.edge, width, height, blob);
+      if (boundary.length >= 24) {
+        const fitted = fitEllipse(boundary);
+        if (fitted) {
+          addSeedIfDistinct(seeds, {
+            ellipse: sanitizeEllipse(fitted, width, height),
+            source: 'blob',
+          });
+        }
+      }
+
+      const ellipseFromBox: Ellipse = {
+        centerX: blob.centroid.x,
+        centerY: blob.centroid.y,
+        radiusX: blob.boundingBox.width * 0.52,
+        radiusY: blob.boundingBox.height * 0.52,
+        rotation: 0,
+      };
+
+      addSeedIfDistinct(seeds, {
+        ellipse: sanitizeEllipse(ellipseFromBox, width, height),
+        source: 'blob',
+      });
+    }
+  };
+
+  addSeedsFromBlobs(maps.mask, minBlobArea, 8);
+  addSeedsFromBlobs(maps.colorMask, colorMinBlobArea, 10);
+
+  const edgeSeed = estimateEdgeSeed(maps.edge, width, height);
+  if (edgeSeed) {
+    addSeedIfDistinct(seeds, {
+      ellipse: sanitizeEllipse(edgeSeed, width, height),
+      source: 'edge',
+    });
+  }
+
+  const base = Math.min(width, height);
+  const radiusFactors = [0.22, 0.28, 0.34, 0.4];
+  for (const factor of radiusFactors) {
+    addSeedIfDistinct(seeds, {
+      ellipse: {
+        centerX: width * 0.5,
+        centerY: height * 0.5,
+        radiusX: base * factor,
+        radiusY: base * factor,
+        rotation: 0,
+      },
+      source: 'center',
+    });
+  }
+
+  const centerOffsets: Array<[number, number]> = [
+    [-0.09, 0],
+    [0.09, 0],
+    [0, -0.09],
+    [0, 0.09],
+  ];
+
+  for (const [ox, oy] of centerOffsets) {
+    addSeedIfDistinct(seeds, {
+      ellipse: {
+        centerX: width * (0.5 + ox),
+        centerY: height * (0.5 + oy),
+        radiusX: base * 0.31,
+        radiusY: base * 0.31,
+        rotation: 0,
+      },
+      source: 'center',
+    });
+  }
+
+  return seeds.slice(0, 18);
+}
+
+export function detectDartboardEllipse(
+  imageData: ImageData,
+  previousEllipse?: Ellipse | null,
+): DartboardDetectionResult | null {
+  const { width, height } = imageData;
+  const area = width * height;
+  if (area < 160 * 120) return null;
+
+  const maps = buildFeatureMaps(imageData);
+  maps.mask = cleanMask(maps.mask, width, height);
+  maps.colorMask = cleanMask(maps.colorMask, width, height);
+
+  for (let i = 0; i < maps.mask.length; i++) {
+    if (maps.colorMask[i] > 0) {
+      maps.mask[i] = 255;
+    }
+  }
+
+  const seeds = generateSeeds(maps, width, height, previousEllipse);
+  if (seeds.length === 0) return null;
+
+  let best: CandidateEval | null = null;
+  let bestSource: CandidateSeed['source'] = 'center';
+
+  for (const seed of seeds) {
+    const optimized = optimizeEllipse(seed.ellipse, maps, width, height);
+
+    if (!best || optimized.metrics.quality01 > best.metrics.quality01) {
+      best = optimized;
+      bestSource = seed.source;
+    }
+  }
+
+  if (!best) return null;
+
+  let quality01 = best.metrics.quality01;
+
+  if (bestSource === 'previous') {
+    quality01 += 0.03;
+  }
+
+  if (previousEllipse) {
+    quality01 += ellipseSimilarity(best.ellipse, previousEllipse) * 0.05;
+  }
+
+  quality01 = clamp01(quality01);
+  const quality = Math.round(quality01 * 100);
+
+  if (quality < 24) {
     return null;
   }
 
-  return bestCandidate;
+  return {
+    ellipse: best.ellipse,
+    quality,
+    patternScore: best.metrics.patternScore,
+    edgeScore: best.metrics.edgeScore,
+    ringScore: best.metrics.ringScore,
+  };
 }
