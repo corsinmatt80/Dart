@@ -62,6 +62,8 @@ const BOARD_DETECTION_INTERVAL = 3;
 const BOARD_DETECTION_MAX_SIDE = 720;
 const BOARD_CONFIRM_THRESHOLD = 40;
 const BOARD_FIELD_CONFIRM_THRESHOLD = 30;
+const BOARD_SNAPSHOT_INTERVAL_MS = 3000;
+const BOARD_STABLE_FRAMES_REQUIRED = 5;
 
 // ============ COMPONENT ============
 function MobileCameraV3() {
@@ -80,6 +82,7 @@ function MobileCameraV3() {
   const [lastHit, setLastHit] = useState<DartHit | null>(null);
   const [detectionQuality, setDetectionQuality] = useState(0);
   const [detectionStats, setDetectionStats] = useState({ edge: 0, ring: 0, pattern: 0, fields: 0 });
+  const [cameraStable, setCameraStable] = useState(false);
   
   // Manual adjustment state
   const [manualEllipse, setManualEllipse] = useState<Ellipse>({
@@ -99,6 +102,8 @@ function MobileCameraV3() {
   const detectionHistoryRef = useRef<Ellipse[]>([]);
   const smoothedEllipseRef = useRef<Ellipse | null>(null);
   const detectionMissesRef = useRef(0);
+  const stableFramesRef = useRef(0);
+  const lastBoardSnapshotRef = useRef(0);
 
   // ============ DARTBOARD DETECTION HELPERS ============
 
@@ -138,6 +143,16 @@ function MobileCameraV3() {
 
     smoothedEllipseRef.current = stabilized;
     return stabilized;
+  }, []);
+
+  const blendEllipse = useCallback((from: Ellipse, to: Ellipse, alpha: number): Ellipse => {
+    return {
+      centerX: from.centerX + (to.centerX - from.centerX) * alpha,
+      centerY: from.centerY + (to.centerY - from.centerY) * alpha,
+      radiusX: from.radiusX + (to.radiusX - from.radiusX) * alpha,
+      radiusY: from.radiusY + (to.radiusY - from.radiusY) * alpha,
+      rotation: blendAngle(from.rotation, to.rotation, alpha),
+    };
   }, []);
 
   // ============ COORDINATE TRANSFORMATION ============
@@ -514,8 +529,55 @@ function MobileCameraV3() {
                 };
 
                 const stable = stabilizeEllipse(detectedEllipse);
-                calibrationRef.current.ellipse = stable;
+                const previousEllipse = calibrationRef.current.ellipse;
+                const nowMs = performance.now();
+                let nearStatic = true;
+                let nextEllipse = stable;
+
+                if (previousEllipse) {
+                  const avgRadius = Math.max(1, (previousEllipse.radiusX + previousEllipse.radiusY) * 0.5);
+                  const centerShift =
+                    Math.hypot(stable.centerX - previousEllipse.centerX, stable.centerY - previousEllipse.centerY) /
+                    avgRadius;
+                  const radiusShift =
+                    (Math.abs(stable.radiusX - previousEllipse.radiusX) + Math.abs(stable.radiusY - previousEllipse.radiusY)) /
+                    (2 * avgRadius);
+
+                  nearStatic = centerShift < 0.12 && radiusShift < 0.16;
+
+                  const shouldSnap =
+                    nowMs - lastBoardSnapshotRef.current >= BOARD_SNAPSHOT_INTERVAL_MS &&
+                    detection.quality >= 60 &&
+                    detection.fieldScore >= 0.3;
+
+                  if (nearStatic) {
+                    nextEllipse = blendEllipse(previousEllipse, stable, 0.18);
+                  } else if (shouldSnap) {
+                    nextEllipse = stable;
+                    lastBoardSnapshotRef.current = nowMs;
+                  } else {
+                    nextEllipse = blendEllipse(previousEllipse, stable, 0.06);
+                  }
+                } else {
+                  lastBoardSnapshotRef.current = nowMs;
+                }
+
+                calibrationRef.current.ellipse = nextEllipse;
                 detectionMissesRef.current = 0;
+
+                if (
+                  nearStatic &&
+                  detection.quality >= BOARD_CONFIRM_THRESHOLD &&
+                  detection.fieldScore >= BOARD_FIELD_CONFIRM_THRESHOLD / 100
+                ) {
+                  stableFramesRef.current += 1;
+                } else {
+                  stableFramesRef.current = Math.max(0, stableFramesRef.current - 2);
+                }
+
+                const isStableNow = stableFramesRef.current >= BOARD_STABLE_FRAMES_REQUIRED;
+                setCameraStable(isStableNow);
+
                 setDetectionQuality(prev => Math.round(prev * 0.45 + detection.quality * 0.55));
                 setDetectionStats({
                   edge: detection.edgeScore,
@@ -524,7 +586,9 @@ function MobileCameraV3() {
                   fields: detection.fieldScore,
                 });
 
-                if (detection.fieldScore < 0.3 && detection.quality > 55) {
+                if (!isStableNow && detection.quality > 55) {
+                  setFeedback('📱 Kamera kurz ruhig halten (ca. 3s)');
+                } else if (detection.fieldScore < 0.3 && detection.quality > 55) {
                   setFeedback('🎯 Scheibe erkannt - Felder werden noch ausgerichtet');
                 } else if (detection.quality > 80) {
                   setFeedback('🎯 Dartscheibe sicher erkannt! Tippe auf Bestätigen');
@@ -535,6 +599,8 @@ function MobileCameraV3() {
                 }
               } else {
                 detectionMissesRef.current += 1;
+                stableFramesRef.current = 0;
+                setCameraStable(false);
                 setDetectionQuality(prev => Math.max(0, prev - 4));
                 setDetectionStats(prev => ({
                   edge: prev.edge * 0.92,
@@ -547,6 +613,7 @@ function MobileCameraV3() {
                   calibrationRef.current.ellipse = null;
                   smoothedEllipseRef.current = null;
                   detectionHistoryRef.current = [];
+                  lastBoardSnapshotRef.current = 0;
                 }
 
                 if (detectionMissesRef.current > 8) {
@@ -674,7 +741,7 @@ function MobileCameraV3() {
     return () => cancelAnimationFrame(animationId);
   }, [
     cameraActive, mode, rotationOffset, manualEllipse,
-    stabilizeEllipse, drawEllipseOverlay, drawHitMarker,
+    stabilizeEllipse, blendEllipse, drawEllipseOverlay, drawHitMarker,
     detectDartInDifference, pointToEllipsePolar, polarToScore, sendHitToDesktop
   ]);
 
@@ -742,10 +809,13 @@ function MobileCameraV3() {
     detectionHistoryRef.current = [];
     smoothedEllipseRef.current = null;
     detectionMissesRef.current = 0;
+    stableFramesRef.current = 0;
+    lastBoardSnapshotRef.current = 0;
     setMode('auto-detecting');
     setRotationOffset(0);
     setDetectionQuality(0);
     setDetectionStats({ edge: 0, ring: 0, pattern: 0, fields: 0 });
+    setCameraStable(false);
     setFeedback('🔍 Suche Dartscheibe...');
   };
 
@@ -774,7 +844,7 @@ function MobileCameraV3() {
           )}
           {mode === 'auto-detecting' && (
             <span className="text-[10px] text-gray-300 font-mono bg-black/40 px-1.5 py-0.5 rounded">
-              Q{Math.round(detectionQuality)} E{Math.round(detectionStats.edge * 100)} R{Math.round(detectionStats.ring * 100)} P{Math.round(detectionStats.pattern * 100)} F{Math.round(detectionStats.fields * 100)}
+              Q{Math.round(detectionQuality)} E{Math.round(detectionStats.edge * 100)} R{Math.round(detectionStats.ring * 100)} P{Math.round(detectionStats.pattern * 100)} F{Math.round(detectionStats.fields * 100)} {cameraStable ? 'S1' : 'S0'}
             </span>
           )}
         </div>
@@ -885,7 +955,8 @@ function MobileCameraV3() {
               onClick={handleConfirmCalibration}
               disabled={
                 detectionQuality < BOARD_CONFIRM_THRESHOLD ||
-                detectionStats.fields < BOARD_FIELD_CONFIRM_THRESHOLD / 100
+                detectionStats.fields < BOARD_FIELD_CONFIRM_THRESHOLD / 100 ||
+                !cameraStable
               }
               className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:text-gray-400 text-white font-bold rounded-lg flex items-center justify-center gap-2"
             >
