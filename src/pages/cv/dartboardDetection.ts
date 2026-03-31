@@ -297,18 +297,18 @@ function buildFeatureMaps(imageData: ImageData): FeatureMaps {
       clamp01((val - 0.08) / 0.84);
 
     const darkScore =
-      clamp01((0.38 - val) / 0.3) *
-      clamp01((0.56 - sat) / 0.56) *
-      clamp01((val - 0.035) / 0.12);
+      clamp01((0.44 - val) / 0.4) *
+      clamp01((0.62 - sat) / 0.62) *
+      clamp01((val - 0.02) / 0.18);
 
     const lightScore =
       clamp01((val - 0.42) / 0.58) *
       clamp01((0.52 - sat) / 0.52);
 
     const colorScore = Math.max(redScore, greenScore);
-    const boardScore = Math.max(redScore * 1.08, greenScore * 1.08, darkScore * 0.45, lightScore * 0.84);
+    const boardScore = Math.max(redScore * 1.08, greenScore * 1.08, darkScore * 0.62, lightScore * 0.84);
 
-    mask[idx] = boardScore > 0.17 ? 255 : 0;
+    mask[idx] = boardScore > 0.155 ? 255 : 0;
     colorMask[idx] = colorScore > 0.1 ? 255 : 0;
     redGreen[idx] = redScore - greenScore;
     colorStrength[idx] = colorScore;
@@ -921,10 +921,13 @@ function computeScoringRingsScore(
     clamp01((doubleContrast - 0.014) / 0.12) * 0.68 +
     clamp01((doubleContinuity - 0.3) / 0.62) * 0.32;
 
+  const peakBalance = clamp01(1 - Math.abs(doublePeakAvg - triplePeakAvg) / 0.2);
+  const pairPresence = clamp01((Math.min(tripleContinuity, doubleContinuity) - 0.24) / 0.5);
+
   const outsideLeak = clamp01((doubleOuterAvg - 0.12) / 0.28);
   const leakPenalty = 1 - outsideLeak * 0.42;
 
-  return clamp01((tripleScore * 0.44 + doubleScore * 0.56) * leakPenalty);
+  return clamp01((tripleScore * 0.38 + doubleScore * 0.46 + peakBalance * 0.08 + pairPresence * 0.08) * leakPenalty);
 }
 
 function computeFillScore(mask: Uint8ClampedArray, width: number, height: number, ellipse: Ellipse): number {
