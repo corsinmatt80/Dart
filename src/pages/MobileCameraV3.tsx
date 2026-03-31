@@ -37,19 +37,22 @@ interface DartHit {
   timestamp: number;
 }
 
-type CalibrationMode = 'auto-detecting' | 'manual-adjust' | 'confirming' | 'active';
+type CalibrationMode = 'auto-detecting' | 'manual-adjust' | 'confirming' | 'set-20' | 'active';
 
 // ============ CONSTANTS ============
 const DART_NUMBERS = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 const SEGMENT_ANGLE = 18; // degrees per segment
 
-// Ring boundaries (relative to outer double ring = 1.0)
-const DOUBLE_BULL_R = 0.032;
-const SINGLE_BULL_R = 0.080;
-const INNER_SINGLE_OUTER_R = 0.47;  // End of inner single
-const TRIPLE_OUTER_R = 0.54;        // End of triple
-const OUTER_SINGLE_OUTER_R = 0.89;  // End of outer single
-const DOUBLE_OUTER_R = 1.0;         // End of double (board edge)
+// Ring boundaries for standard steel dartboard (relative to double outer radius = 170 mm)
+const DOUBLE_BULL_R = 6.35 / 170;
+const SINGLE_BULL_R = 15.9 / 170;
+const INNER_SINGLE_OUTER_R = 99 / 170;
+const TRIPLE_OUTER_R = 107 / 170;
+const OUTER_SINGLE_OUTER_R = 162 / 170;
+const DOUBLE_OUTER_R = 1.0;
+
+const TWENTY_CALIBRATION_MIN_R = 0.78;
+const TWENTY_CALIBRATION_MAX_R = 1.22;
 
 // Detection parameters
 const DART_DETECTION_COOLDOWN = 2000;
@@ -142,7 +145,7 @@ function MobileCameraV3() {
   /**
    * Transform a point to polar coordinates relative to the dartboard ellipse
    */
-  const pointToEllipsePolar = useCallback((point: Point, ellipse: Ellipse): PolarCoord => {
+  const pointToEllipsePolarRaw = useCallback((point: Point, ellipse: Ellipse): PolarCoord => {
     // Translate to ellipse center
     const dx = point.x - ellipse.centerX;
     const dy = point.y - ellipse.centerY;
@@ -163,12 +166,26 @@ function MobileCameraV3() {
     // Calculate angle (0° at top/20, going clockwise)
     let theta = Math.atan2(nx, -ny) * (180 / Math.PI);
     if (theta < 0) theta += 360;
-    
-    // Apply rotation offset to align with dart numbers
-    theta = (theta + calibrationRef.current.rotationOffset + 360) % 360;
-    
+
     return { r, theta };
   }, []);
+
+  const pointToEllipsePolar = useCallback((point: Point, ellipse: Ellipse): PolarCoord => {
+    const polar = pointToEllipsePolarRaw(point, ellipse);
+    return {
+      r: polar.r,
+      theta: (polar.theta + calibrationRef.current.rotationOffset + 360) % 360,
+    };
+  }, [pointToEllipsePolarRaw]);
+
+  const computeRotationOffsetForTwentyTap = useCallback((point: Point, ellipse: Ellipse): number | null => {
+    const rawPolar = pointToEllipsePolarRaw(point, ellipse);
+    if (rawPolar.r < TWENTY_CALIBRATION_MIN_R || rawPolar.r > TWENTY_CALIBRATION_MAX_R) {
+      return null;
+    }
+
+    return (360 - rawPolar.theta + 360) % 360;
+  }, [pointToEllipsePolarRaw]);
 
   /**
    * Convert polar coordinates to dart score
@@ -251,18 +268,6 @@ function MobileCameraV3() {
     if (diffPoints.length > 5000) return null; // Too much change, probably lighting
     
     // Find the tip (the point closest to center from the diff region)
-    // First, find the centroid of the changed region
-    let sumX = 0, sumY = 0;
-    for (const p of diffPoints) {
-      sumX += p.x;
-      sumY += p.y;
-    }
-    const centroid = { x: sumX / diffPoints.length, y: sumY / diffPoints.length };
-    
-    // The dart tip should be the point of the changed region that's closest to the board center
-    let closestToBoardCenter: Point = centroid;
-    let minDistToCenter = Infinity;
-    
     // Sort by distance from center and take the closest few points
     const sortedByDist = diffPoints.map(p => ({
       point: p,
@@ -583,10 +588,20 @@ function MobileCameraV3() {
             isCalibrated: true,
             rotationOffset
           };
-          
-          setMode('active');
-          setFeedback('✅ Bereit! Wirf deinen Dart!');
-          setTimeout(() => setFeedback(''), 2000);
+
+          setMode('set-20');
+          setFeedback('👉 Tippe jetzt auf das 20er-Feld (außen)');
+          break;
+        }
+
+        case 'set-20': {
+          const ellipse = calibrationRef.current.ellipse;
+          if (!ellipse) {
+            setMode('auto-detecting');
+            break;
+          }
+
+          drawEllipseOverlay(overlayCtx, ellipse, false, rotationOffset);
           break;
         }
 
@@ -688,6 +703,39 @@ function MobileCameraV3() {
     setMode('manual-adjust');
   };
 
+  const handleTwentyTap = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (mode !== 'set-20') return;
+
+    const overlay = overlayCanvasRef.current;
+    const ellipse = calibrationRef.current.ellipse;
+    if (!overlay || !ellipse) return;
+
+    const rect = overlay.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const x = (event.clientX - rect.left) * (overlay.width / rect.width);
+    const y = (event.clientY - rect.top) * (overlay.height / rect.height);
+
+    const nextOffset = computeRotationOffsetForTwentyTap({ x, y }, ellipse);
+    if (nextOffset === null) {
+      setFeedback('⚠️ Bitte außen im 20er-Feld tippen (Double/Outer Single)');
+      return;
+    }
+
+    setRotationOffset(Math.round(nextOffset));
+    calibrationRef.current.rotationOffset = nextOffset;
+    setMode('active');
+    setFeedback('✅ 20 gesetzt - Bereit! Wirf deinen Dart!');
+    setTimeout(() => setFeedback(''), 1800);
+  };
+
+  const handleSkipTwentyCalibration = () => {
+    calibrationRef.current.rotationOffset = rotationOffset;
+    setMode('active');
+    setFeedback('✅ Bereit! Wirf deinen Dart!');
+    setTimeout(() => setFeedback(''), 1500);
+  };
+
   const handleReset = () => {
     calibrationRef.current = { ellipse: null, isCalibrated: false, rotationOffset: 0 };
     referenceFrameRef.current = null;
@@ -695,6 +743,7 @@ function MobileCameraV3() {
     smoothedEllipseRef.current = null;
     detectionMissesRef.current = 0;
     setMode('auto-detecting');
+    setRotationOffset(0);
     setDetectionQuality(0);
     setDetectionStats({ edge: 0, ring: 0, pattern: 0, fields: 0 });
     setFeedback('🔍 Suche Dartscheibe...');
@@ -753,6 +802,12 @@ function MobileCameraV3() {
           ref={overlayCanvasRef}
           className="absolute inset-0 w-full h-full pointer-events-none"
         />
+        {mode === 'set-20' && (
+          <div
+            className="absolute inset-0 z-10 cursor-crosshair"
+            onClick={handleTwentyTap}
+          />
+        )}
         
         {/* Feedback */}
         {feedback && (
@@ -852,6 +907,23 @@ function MobileCameraV3() {
               className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg flex items-center justify-center gap-2"
             >
               <Check size={18} /> Bestätigen
+            </button>
+            <button
+              onClick={handleReset}
+              className="py-3 px-4 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg"
+            >
+              <RotateCcw size={18} />
+            </button>
+          </div>
+        )}
+
+        {mode === 'set-20' && (
+          <div className="flex gap-2">
+            <button
+              onClick={handleSkipTwentyCalibration}
+              className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg flex items-center justify-center gap-2"
+            >
+              <Check size={18} /> Aktuellen Winkel verwenden
             </button>
             <button
               onClick={handleReset}

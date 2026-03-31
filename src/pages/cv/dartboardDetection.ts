@@ -48,6 +48,7 @@ interface CandidateMetrics {
   colorCoverageScore: number;
   colorAlternationScore: number;
   scoringRingsScore: number;
+  outerBoundaryScore: number;
   rimFitScore: number;
   fillScore: number;
   aspectScore: number;
@@ -63,8 +64,22 @@ interface CandidateEval {
 
 type NumericArray = Float32Array | Uint8ClampedArray;
 
-const RING_BOUNDARIES = [0.08, 0.47, 0.54, 0.89, 1.0];
-const EDGE_RINGS = [0.47, 0.54, 0.89, 1.0];
+const OUTER_BULL_R = 15.9 / 170;
+const TRIPLE_INNER_R = 99 / 170;
+const TRIPLE_OUTER_R = 107 / 170;
+const DOUBLE_INNER_R = 162 / 170;
+const DOUBLE_OUTER_R = 1;
+
+const TRIPLE_MID_R = (TRIPLE_INNER_R + TRIPLE_OUTER_R) * 0.5;
+const DOUBLE_MID_R = (DOUBLE_INNER_R + DOUBLE_OUTER_R) * 0.5;
+
+const TRIPLE_CONTEXT_INNER_R = TRIPLE_INNER_R - 0.055;
+const TRIPLE_CONTEXT_OUTER_R = TRIPLE_OUTER_R + 0.055;
+const DOUBLE_CONTEXT_INNER_R = DOUBLE_INNER_R - 0.06;
+const DOUBLE_CONTEXT_OUTER_R = DOUBLE_OUTER_R + 0.05;
+
+const RING_BOUNDARIES = [OUTER_BULL_R, TRIPLE_INNER_R, TRIPLE_OUTER_R, DOUBLE_INNER_R, DOUBLE_OUTER_R];
+const EDGE_RINGS = [TRIPLE_INNER_R, TRIPLE_OUTER_R, DOUBLE_INNER_R, DOUBLE_OUTER_R];
 const HARMONIC_SEGMENTS = 20;
 
 function clamp(value: number, min: number, max: number): number {
@@ -560,17 +575,17 @@ function sampleBoundaryAroundEllipse(
     let bestScale = 1;
     let bestScore = -Infinity;
 
-    for (let scale = 0.82; scale <= 1.2; scale += 0.03) {
+    for (let scale = 0.7; scale <= 1.48; scale += 0.035) {
       const p = ellipsePoint(ellipse, scale, angle);
-      const inside = ellipsePoint(ellipse, Math.max(0, scale - 0.04), angle);
-      const outside = ellipsePoint(ellipse, Math.min(1.25, scale + 0.04), angle);
+      const inside = ellipsePoint(ellipse, Math.max(0, scale - 0.05), angle);
+      const outside = ellipsePoint(ellipse, Math.min(1.55, scale + 0.05), angle);
 
       const edgeValue = sampleBilinear(edge, width, height, p.x, p.y);
       const insideValue = sampleBilinear(mask, width, height, inside.x, inside.y) / 255;
       const outsideValue = sampleBilinear(mask, width, height, outside.x, outside.y) / 255;
       const transition = insideValue - outsideValue;
 
-      const score = edgeValue * 1.25 + transition * 0.9 - Math.abs(scale - 1) * 0.2;
+      const score = edgeValue * 1.25 + transition * 1.04 - Math.abs(scale - 1) * 0.14;
       if (score > bestScore) {
         bestScore = score;
         bestScale = scale;
@@ -743,8 +758,8 @@ function computePatternScore(redGreen: Float32Array, width: number, height: numb
   for (let degree = 0; degree < 360; degree += 3) {
     const angle = (degree * Math.PI) / 180;
 
-    const triplePoint = ellipsePoint(ellipse, 0.505, angle);
-    const doublePoint = ellipsePoint(ellipse, 0.945, angle);
+    const triplePoint = ellipsePoint(ellipse, TRIPLE_MID_R, angle);
+    const doublePoint = ellipsePoint(ellipse, DOUBLE_MID_R, angle);
 
     const tripleSignal = sampleBilinear(redGreen, width, height, triplePoint.x, triplePoint.y);
     const doubleSignal = sampleBilinear(redGreen, width, height, doublePoint.x, doublePoint.y);
@@ -769,7 +784,7 @@ function computeColorCoverageScore(
   height: number,
   ellipse: Ellipse,
 ): number {
-  const rings = [0.505, 0.945];
+  const rings = [TRIPLE_MID_R, DOUBLE_MID_R];
   let present = 0;
   let count = 0;
 
@@ -797,7 +812,7 @@ function computeColorAlternationScore(
   height: number,
   ellipse: Ellipse,
 ): number {
-  const rings = [0.505, 0.945];
+  const rings = [TRIPLE_MID_R, DOUBLE_MID_R];
   let total = 0;
 
   for (const radius of rings) {
@@ -869,12 +884,12 @@ function computeScoringRingsScore(
   for (let degree = 0; degree < 360; degree += 3) {
     const angle = (degree * Math.PI) / 180;
 
-    const triplePeakPoint = ellipsePoint(ellipse, 0.505, angle);
-    const tripleInnerPoint = ellipsePoint(ellipse, 0.44, angle);
-    const tripleOuterPoint = ellipsePoint(ellipse, 0.57, angle);
-    const doublePeakPoint = ellipsePoint(ellipse, 0.945, angle);
-    const doubleInnerPoint = ellipsePoint(ellipse, 0.86, angle);
-    const doubleOuterPoint = ellipsePoint(ellipse, 1.03, angle);
+    const triplePeakPoint = ellipsePoint(ellipse, TRIPLE_MID_R, angle);
+    const tripleInnerPoint = ellipsePoint(ellipse, TRIPLE_CONTEXT_INNER_R, angle);
+    const tripleOuterPoint = ellipsePoint(ellipse, TRIPLE_CONTEXT_OUTER_R, angle);
+    const doublePeakPoint = ellipsePoint(ellipse, DOUBLE_MID_R, angle);
+    const doubleInnerPoint = ellipsePoint(ellipse, DOUBLE_CONTEXT_INNER_R, angle);
+    const doubleOuterPoint = ellipsePoint(ellipse, DOUBLE_CONTEXT_OUTER_R, angle);
 
     const triplePeak = sampleBilinear(colorStrength, width, height, triplePeakPoint.x, triplePeakPoint.y);
     const tripleInner = sampleBilinear(colorStrength, width, height, tripleInnerPoint.x, tripleInnerPoint.y);
@@ -930,6 +945,53 @@ function computeScoringRingsScore(
   return clamp01((tripleScore * 0.38 + doubleScore * 0.46 + peakBalance * 0.08 + pairPresence * 0.08) * leakPenalty);
 }
 
+function computeOuterBoundaryScore(
+  mask: Uint8ClampedArray,
+  edge: Float32Array,
+  width: number,
+  height: number,
+  ellipse: Ellipse,
+): number {
+  let sum = 0;
+  let transitionStrong = 0;
+  let count = 0;
+
+  for (let degree = 0; degree < 360; degree += 4) {
+    const angle = (degree * Math.PI) / 180;
+
+    const innerPoint = ellipsePoint(ellipse, DOUBLE_INNER_R + 0.01, angle);
+    const edgePoint = ellipsePoint(ellipse, DOUBLE_OUTER_R, angle);
+    const outerNearPoint = ellipsePoint(ellipse, DOUBLE_OUTER_R + 0.035, angle);
+    const outerFarPoint = ellipsePoint(ellipse, DOUBLE_OUTER_R + 0.11, angle);
+
+    const innerMask = sampleBilinear(mask, width, height, innerPoint.x, innerPoint.y) / 255;
+    const outerNearMask = sampleBilinear(mask, width, height, outerNearPoint.x, outerNearPoint.y) / 255;
+    const outerFarMask = sampleBilinear(mask, width, height, outerFarPoint.x, outerFarPoint.y) / 255;
+    const boundaryEdge = sampleBilinear(edge, width, height, edgePoint.x, edgePoint.y);
+
+    const transition = clamp01((innerMask - outerNearMask) / 0.65);
+    const edgeTerm = clamp01((boundaryEdge - 0.055) / 0.24);
+    const outsidePenalty = clamp01((outerNearMask * 0.7 + outerFarMask * 0.95 - 0.42) / 0.62);
+
+    const local = clamp01(edgeTerm * 0.58 + transition * 0.52 - outsidePenalty * 0.55);
+    sum += local;
+
+    if (transition > 0.42) {
+      transitionStrong += 1;
+    }
+
+    count += 1;
+  }
+
+  if (count === 0) return 0;
+
+  const average = sum / count;
+  const transitionCoverage = transitionStrong / count;
+  const coverageScore = clamp01((transitionCoverage - 0.25) / 0.55);
+
+  return clamp01(average * 0.72 + coverageScore * 0.28);
+}
+
 function computeFillScore(mask: Uint8ClampedArray, width: number, height: number, ellipse: Ellipse): number {
   const minX = Math.max(0, Math.floor(ellipse.centerX - ellipse.radiusX));
   const maxX = Math.min(width - 1, Math.ceil(ellipse.centerX + ellipse.radiusX));
@@ -972,6 +1034,7 @@ function scoreEllipse(
     ellipse,
   );
   const scoringRingsScore = computeScoringRingsScore(maps.colorStrength, width, height, ellipse);
+  const outerBoundaryScore = computeOuterBoundaryScore(maps.mask, maps.edge, width, height, ellipse);
   const fillScore = computeFillScore(maps.mask, width, height, ellipse);
 
   const aspectRatio = Math.min(ellipse.radiusX, ellipse.radiusY) / Math.max(ellipse.radiusX, ellipse.radiusY);
@@ -987,13 +1050,14 @@ function scoreEllipse(
   const centerScore = clamp01(1 - centerDistance / 0.48);
 
   let quality01 =
-    rimFitScore * 0.19 +
-    edgeScore * 0.18 +
-    ringScore * 0.14 +
-    patternScore * 0.09 +
-    colorCoverageScore * 0.13 +
-    colorAlternationScore * 0.1 +
+    rimFitScore * 0.18 +
+    edgeScore * 0.15 +
+    ringScore * 0.12 +
+    patternScore * 0.08 +
+    colorCoverageScore * 0.1 +
+    colorAlternationScore * 0.08 +
     scoringRingsScore * 0.15 +
+    outerBoundaryScore * 0.13 +
     fillScore * 0.01 +
     aspectScore * 0.005 +
     sizeScore * 0.005;
@@ -1003,6 +1067,7 @@ function scoreEllipse(
   if (ringScore < 0.05 && patternScore < 0.05 && colorAlternationScore < 0.05) quality01 *= 0.72;
   if (colorCoverageScore < 0.04 && scoringRingsScore < 0.18) quality01 *= 0.74;
   if (scoringRingsScore < 0.13) quality01 *= 0.72;
+  if (outerBoundaryScore < 0.12) quality01 *= 0.56;
   if (aspectScore < 0.14) quality01 *= 0.7;
   if (sizeScore < 0.1) quality01 *= 0.7;
 
@@ -1016,6 +1081,7 @@ function scoreEllipse(
     colorCoverageScore,
     colorAlternationScore,
     scoringRingsScore,
+    outerBoundaryScore,
     rimFitScore,
     fillScore,
     aspectScore,
@@ -1039,11 +1105,11 @@ function evaluateEllipse(ellipse: Ellipse, maps: FeatureMaps, width: number, hei
 function optimizeEllipse(seed: Ellipse, maps: FeatureMaps, width: number, height: number): CandidateEval {
   let best = evaluateEllipse(seed, maps, width, height);
 
-  let stepCenter = Math.max(2, ((best.ellipse.radiusX + best.ellipse.radiusY) * 0.5) * 0.12);
-  let stepRadius = Math.max(2, ((best.ellipse.radiusX + best.ellipse.radiusY) * 0.5) * 0.12);
-  let stepRotation = 0.12;
+  let stepCenter = Math.max(2, ((best.ellipse.radiusX + best.ellipse.radiusY) * 0.5) * 0.18);
+  let stepRadius = Math.max(2, ((best.ellipse.radiusX + best.ellipse.radiusY) * 0.5) * 0.2);
+  let stepRotation = 0.14;
 
-  for (let iteration = 0; iteration < 5; iteration++) {
+  for (let iteration = 0; iteration < 7; iteration++) {
     let improved = false;
 
     const proposals: Ellipse[] = [
@@ -1055,26 +1121,32 @@ function optimizeEllipse(seed: Ellipse, maps: FeatureMaps, width: number, height
       { ...best.ellipse, radiusX: best.ellipse.radiusX + stepRadius },
       { ...best.ellipse, radiusY: best.ellipse.radiusY - stepRadius },
       { ...best.ellipse, radiusY: best.ellipse.radiusY + stepRadius },
+      { ...best.ellipse, radiusX: best.ellipse.radiusX - stepRadius, radiusY: best.ellipse.radiusY - stepRadius },
+      { ...best.ellipse, radiusX: best.ellipse.radiusX + stepRadius, radiusY: best.ellipse.radiusY + stepRadius },
+      { ...best.ellipse, radiusX: best.ellipse.radiusX * 0.88, radiusY: best.ellipse.radiusY * 0.88 },
+      { ...best.ellipse, radiusX: best.ellipse.radiusX * 1.16, radiusY: best.ellipse.radiusY * 1.16 },
+      { ...best.ellipse, radiusX: best.ellipse.radiusX * 1.08, radiusY: best.ellipse.radiusY * 0.94 },
+      { ...best.ellipse, radiusX: best.ellipse.radiusX * 0.94, radiusY: best.ellipse.radiusY * 1.08 },
       { ...best.ellipse, rotation: best.ellipse.rotation - stepRotation },
       { ...best.ellipse, rotation: best.ellipse.rotation + stepRotation },
     ];
 
     for (const proposal of proposals) {
       const evalCandidate = evaluateEllipse(proposal, maps, width, height);
-      if (evalCandidate.metrics.quality01 > best.metrics.quality01 + 0.0015) {
+      if (evalCandidate.metrics.quality01 > best.metrics.quality01 + 0.0012) {
         best = evalCandidate;
         improved = true;
       }
     }
 
     if (!improved) {
-      stepCenter *= 0.62;
-      stepRadius *= 0.62;
-      stepRotation *= 0.62;
+      stepCenter *= 0.68;
+      stepRadius *= 0.68;
+      stepRotation *= 0.68;
     } else {
-      stepCenter *= 0.72;
-      stepRadius *= 0.72;
-      stepRotation *= 0.72;
+      stepCenter *= 0.76;
+      stepRadius *= 0.76;
+      stepRotation *= 0.76;
     }
   }
 
@@ -1150,11 +1222,25 @@ function generateSeeds(
   const colorMinBlobArea = Math.floor(frameArea * 0.0025);
   const maxBlobArea = Math.floor(frameArea * 0.8);
 
+  const addSeedFamily = (baseEllipse: Ellipse, source: CandidateSeed['source'], scales: number[]) => {
+    for (const scale of scales) {
+      addSeedIfDistinct(seeds, {
+        ellipse: sanitizeEllipse(
+          {
+            ...baseEllipse,
+            radiusX: baseEllipse.radiusX * scale,
+            radiusY: baseEllipse.radiusY * scale,
+          },
+          width,
+          height,
+        ),
+        source,
+      });
+    }
+  };
+
   if (previousEllipse) {
-    addSeedIfDistinct(seeds, {
-      ellipse: sanitizeEllipse(previousEllipse, width, height),
-      source: 'previous',
-    });
+    addSeedFamily(sanitizeEllipse(previousEllipse, width, height), 'previous', [0.9, 1, 1.12]);
   }
 
   const addSeedsFromBlobs = (blobMask: Uint8ClampedArray, localMinBlobArea: number, maxCount: number) => {
@@ -1165,10 +1251,7 @@ function generateSeeds(
       if (boundary.length >= 24) {
         const fitted = fitEllipse(boundary);
         if (fitted) {
-          addSeedIfDistinct(seeds, {
-            ellipse: sanitizeEllipse(fitted, width, height),
-            source: 'blob',
-          });
+          addSeedFamily(sanitizeEllipse(fitted, width, height), 'blob', [0.92, 1, 1.15, 1.32]);
         }
       }
 
@@ -1180,10 +1263,7 @@ function generateSeeds(
         rotation: 0,
       };
 
-      addSeedIfDistinct(seeds, {
-        ellipse: sanitizeEllipse(ellipseFromBox, width, height),
-        source: 'blob',
-      });
+      addSeedFamily(sanitizeEllipse(ellipseFromBox, width, height), 'blob', [0.95, 1.08, 1.24, 1.42]);
     }
   };
 
@@ -1192,14 +1272,11 @@ function generateSeeds(
 
   const edgeSeed = estimateEdgeSeed(maps.edge, width, height);
   if (edgeSeed) {
-    addSeedIfDistinct(seeds, {
-      ellipse: sanitizeEllipse(edgeSeed, width, height),
-      source: 'edge',
-    });
+    addSeedFamily(sanitizeEllipse(edgeSeed, width, height), 'edge', [0.84, 1, 1.2]);
   }
 
   const base = Math.min(width, height);
-  const radiusFactors = [0.22, 0.28, 0.34, 0.4];
+  const radiusFactors = [0.2, 0.28, 0.36, 0.46, 0.56];
   for (const factor of radiusFactors) {
     addSeedIfDistinct(seeds, {
       ellipse: {
@@ -1221,19 +1298,20 @@ function generateSeeds(
   ];
 
   for (const [ox, oy] of centerOffsets) {
-    addSeedIfDistinct(seeds, {
-      ellipse: {
+    addSeedFamily(
+      {
         centerX: width * (0.5 + ox),
         centerY: height * (0.5 + oy),
-        radiusX: base * 0.31,
-        radiusY: base * 0.31,
+        radiusX: base * 0.34,
+        radiusY: base * 0.34,
         rotation: 0,
       },
-      source: 'center',
-    });
+      'center',
+      [0.9, 1, 1.18],
+    );
   }
 
-  return seeds.slice(0, 18);
+  return seeds.slice(0, 28);
 }
 
 export function detectDartboardEllipse(
