@@ -3,6 +3,17 @@ import cv2
 import numpy as np
 
 
+# Standard-WDF-Radien relativ zum äußeren Double-Ring.
+DARTBOARD_RING_DEFINITIONS = (
+    ("outer_double", 1.0),
+    ("inner_double", 162.0 / 170.0),
+    ("outer_triple", 107.0 / 170.0),
+    ("inner_triple", 99.0 / 170.0),
+    ("outer_bull", 15.9 / 170.0),
+    ("inner_bull", 6.35 / 170.0),
+)
+
+
 def _ellipse_metrics(points, ellipse):
     if points.size == 0:
         return np.array([], dtype=np.float32), np.array([], dtype=np.float32)
@@ -147,6 +158,25 @@ def _refit_ellipse_to_edges(initial_ellipse, edges, iterations=3, bins=120):
     return ellipse, coverage, inlier_ratio
 
 
+def _scale_ellipse(ellipse, radius_ratio):
+    (cx, cy), (axis_a, axis_b), angle = ellipse
+    return (
+        (float(cx), float(cy)),
+        (float(axis_a) * float(radius_ratio), float(axis_b) * float(radius_ratio)),
+        float(angle),
+    )
+
+
+def build_reference_ring_ellipses(reference_ellipse):
+    if reference_ellipse is None:
+        return []
+
+    return [
+        (name, _scale_ellipse(reference_ellipse, radius_ratio))
+        for name, radius_ratio in DARTBOARD_RING_DEFINITIONS
+    ]
+
+
 def detect_dartboard(image_path):
     img = cv2.imread(image_path)
     if img is None:
@@ -171,8 +201,6 @@ def detect_dartboard(image_path):
     best_coverage = 0.0
     best_inlier_ratio = 0.0
     best_score = float("inf")
-    best_index = -1
-    accepted_ellipses = []
 
     for cn in contours:
         if len(cn) < 5:
@@ -213,8 +241,6 @@ def detect_dartboard(image_path):
         if center_distance > 0.60:
             continue
 
-        accepted_ellipses.append(ellipse)
-
         dists, _ = _ellipse_metrics(cn.reshape(-1, 2).astype(np.float32), ellipse)
         mean_contour_dist = float(np.mean(dists)) if dists.size > 0 else 1.0
 
@@ -229,7 +255,6 @@ def detect_dartboard(image_path):
         if score < best_score:
             best_score = score
             best_ellipse = ellipse
-            best_index = len(accepted_ellipses) - 1
 
     # Fallback: Wenn nichts die harten Kriterien trifft, nimm den plausibelsten großen Fit.
     if best_ellipse is None:
@@ -256,42 +281,29 @@ def detect_dartboard(image_path):
             if score < best_score:
                 best_score = score
                 best_ellipse = ellipse
-                best_index = -1
 
-    refined_ellipses = []
-    refined_coverages = []
-    refined_inliers = []
-    for ellipse in accepted_ellipses:
-        refined_ellipse, coverage, inlier_ratio = _refit_ellipse_to_edges(ellipse, edges)
-        if coverage >= 0.08 or inlier_ratio >= 0.08:
-            refined_ellipses.append(refined_ellipse)
-            refined_coverages.append(coverage)
-            refined_inliers.append(inlier_ratio)
-        else:
-            refined_ellipses.append(ellipse)
-            refined_coverages.append(0.0)
-            refined_inliers.append(0.0)
-
-    accepted_ellipses = refined_ellipses
-
-    if best_index >= 0 and best_index < len(accepted_ellipses):
-        best_ellipse = accepted_ellipses[best_index]
-        best_coverage = refined_coverages[best_index]
-        best_inlier_ratio = refined_inliers[best_index]
-    elif best_ellipse is not None:
+    if best_ellipse is not None:
         refined_ellipse, coverage, inlier_ratio = _refit_ellipse_to_edges(best_ellipse, edges)
         # Auch bei teilweiser Kontur zeichnen wir die volle Ellipse, wenn genug saubere Segmente vorhanden sind.
         if coverage >= 0.08 or inlier_ratio >= 0.08:
             best_ellipse = refined_ellipse
             best_coverage = coverage
             best_inlier_ratio = inlier_ratio
+        else:
+            best_coverage = 0.0
+            best_inlier_ratio = 0.0
+
+    ring_ellipses = build_reference_ring_ellipses(best_ellipse)
+    accepted_ellipses = [ellipse for _, ellipse in ring_ellipses]
 
     output = img.copy()
-    for ellipse in accepted_ellipses:
-        cv2.ellipse(output, ellipse, (0, 200, 255), 1)
+
+    if ring_ellipses:
+        for name, ellipse in ring_ellipses:
+            thickness = 3 if name == "outer_double" else 2
+            cv2.ellipse(output, ellipse, (0, 255, 0), thickness)
 
     if best_ellipse is not None:
-        cv2.ellipse(output, best_ellipse, (0, 255, 0), 3)
         (cx, cy), _, _ = best_ellipse
         cv2.circle(output, (int(cx), int(cy)), 4, (0, 255, 0), -1)
 
@@ -314,7 +326,7 @@ if __name__ == "__main__":
     if best_ellipse is not None:
         (cx, cy), (a, b), angle = best_ellipse
         print(
-            f"Ellipse gefunden: center=({cx:.1f}, {cy:.1f}), axes=({a:.1f}, {b:.1f}), angle={angle:.1f}, kandidaten={len(accepted_ellipses)}, abdeckung={coverage:.2f}, inlier={inlier_ratio:.2f}"
+            f"Ellipse gefunden: center=({cx:.1f}, {cy:.1f}), axes=({a:.1f}, {b:.1f}), angle={angle:.1f}, ringe={len(accepted_ellipses)}, abdeckung={coverage:.2f}, inlier={inlier_ratio:.2f}"
         )
     else:
         print("Keine passende Ellipse gefunden.")
