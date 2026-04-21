@@ -299,7 +299,7 @@ def detect_dartboard(image_path):
 
 
 if __name__ == "__main__":
-    input_path = "../../../assets/dartboard.jpg"
+    input_path = "../../../assets/dartboard-01.jpg"
     result, gray, edges, best_ellipse, accepted_ellipses, coverage, inlier_ratio = detect_dartboard(input_path)
 
     directory = os.path.dirname(input_path)
