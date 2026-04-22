@@ -9,6 +9,9 @@ TRIPLE_OUTER_R = 107.0 / 170.0
 TRIPLE_INNER_R = 96.0 / 170.0
 OUTER_BULL_R = 15.9 / 170.0
 INNER_BULL_R = 6.35 / 170
+SECTOR_COUNT = 20
+SEPARATOR_LINE_COLOR = (255, 255, 0)
+SEPARATOR_LINE_THICKNESS = 2
 
 
 def _major_minor_axis_info(ellipse):
@@ -277,6 +280,15 @@ def _draw_projected_polyline(image, points, color, thickness):
     cv2.polylines(image, [polyline], True, color, thickness, lineType=cv2.LINE_AA)
 
 
+def _draw_projected_segment(image, points, color, thickness):
+    pts = np.asarray(points, dtype=np.float32)
+    if pts.ndim != 2 or pts.shape[0] < 2:
+        return
+
+    line = np.rint(pts[:2]).astype(np.int32)
+    cv2.line(image, tuple(line[0]), tuple(line[1]), color, thickness, lineType=cv2.LINE_AA)
+
+
 def _ellipse_projection_geometry(reference_ellipse):
     if reference_ellipse is None:
         return None
@@ -324,6 +336,198 @@ def _score_ring_alignment(distance_map, center_xy, radius, tolerance, angles):
     distances = distance_map[ys[valid], xs[valid]]
     closeness = np.clip(1.0 - distances / max(tolerance, 1e-6), 0.0, 1.0)
     return float(np.mean(closeness))
+
+
+def _score_sector_boundary_alignment(edge_image, center_xy, angle_rad, start_radius, end_radius, radial_step=1.5, lateral_tolerance=2):
+    if edge_image is None or end_radius <= start_radius:
+        return 0.0
+
+    h, w = edge_image.shape[:2]
+    if h == 0 or w == 0:
+        return 0.0
+
+    center_xy = np.asarray(center_xy, dtype=np.float32).reshape(2)
+    direction = np.array([np.cos(angle_rad), np.sin(angle_rad)], dtype=np.float32)
+    normal = np.array([-direction[1], direction[0]], dtype=np.float32)
+    radii = np.arange(start_radius, end_radius + radial_step, radial_step, dtype=np.float32)
+    if radii.size == 0:
+        return 0.0
+
+    hit_mask = np.zeros((radii.shape[0],), dtype=np.float32)
+    for idx, radius in enumerate(radii):
+        base = center_xy + direction * float(radius)
+        for offset in range(-lateral_tolerance, lateral_tolerance + 1):
+            point = base + normal * float(offset)
+            x = int(round(float(point[0])))
+            y = int(round(float(point[1])))
+            if x < 0 or y < 0 or x >= w or y >= h:
+                continue
+            if edge_image[y, x] > 0:
+                hit_mask[idx] = 1.0
+                break
+
+    if not np.any(hit_mask):
+        return 0.0
+
+    longest_run = 0
+    current_run = 0
+    for hit in hit_mask:
+        if hit > 0.0:
+            current_run += 1
+            longest_run = max(longest_run, current_run)
+        else:
+            current_run = 0
+
+    occupancy = float(np.mean(hit_mask))
+    continuity = float(longest_run) / float(hit_mask.shape[0])
+    return occupancy * 0.6 + continuity * 0.4
+
+
+def _build_sector_boundary_angle_response(normalized_edges, center_xy, outer_radius, angular_step_deg=0.25):
+    if normalized_edges is None or center_xy is None or outer_radius <= 0.0:
+        return np.array([], dtype=np.float32), np.array([], dtype=np.float32)
+
+    start_radius = float(max(outer_radius * OUTER_BULL_R + 2.0, outer_radius * 0.10))
+    end_radius = float(max(start_radius + 12.0, outer_radius - 3.0))
+    if end_radius <= start_radius:
+        return np.array([], dtype=np.float32), np.array([], dtype=np.float32)
+
+    center_xy = np.asarray(center_xy, dtype=np.float32).reshape(2)
+    radial_values = np.arange(start_radius, end_radius + 1.0, 1.0, dtype=np.float32)
+    angle_values_deg = np.arange(0.0, 360.0, angular_step_deg, dtype=np.float32)
+    angle_values_rad = np.deg2rad(angle_values_deg)
+    if radial_values.size == 0 or angle_values_deg.size == 0:
+        return np.array([], dtype=np.float32), np.array([], dtype=np.float32)
+
+    map_x = center_xy[0] + np.cos(angle_values_rad)[None, :] * radial_values[:, None]
+    map_y = center_xy[1] + np.sin(angle_values_rad)[None, :] * radial_values[:, None]
+    polar_edges = cv2.remap(
+        normalized_edges,
+        map_x.astype(np.float32),
+        map_y.astype(np.float32),
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0,
+    )
+
+    polar_edges = cv2.dilate(
+        polar_edges,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)),
+        iterations=1,
+    )
+    polar_edges = cv2.morphologyEx(
+        polar_edges,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (1, 9)),
+        iterations=1,
+    )
+    vertical_kernel_height = max(9, int(round(polar_edges.shape[0] * 0.12)))
+    sector_verticals = cv2.morphologyEx(
+        polar_edges,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (1, vertical_kernel_height)),
+        iterations=1,
+    )
+    sector_verticals = cv2.morphologyEx(
+        sector_verticals,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (9, 1)),
+        iterations=1,
+    )
+
+    response = np.mean(sector_verticals.astype(np.float32) / 255.0, axis=0)
+    padded = np.concatenate((response[-6:], response, response[:6]))
+    smoothed = np.convolve(padded, np.ones((13,), dtype=np.float32) / 13.0, mode="same")
+    response = smoothed[6:-6].astype(np.float32)
+    return angle_values_deg, response
+
+
+def _detect_sector_boundary_angles(normalized_edges, center_xy, outer_radius, sector_count=SECTOR_COUNT):
+    if normalized_edges is None or center_xy is None or outer_radius <= 0.0 or sector_count <= 0:
+        return np.array([], dtype=np.float32), np.array([], dtype=np.float32)
+
+    sector_step_deg = 360.0 / float(sector_count)
+    angle_values_deg, angle_response = _build_sector_boundary_angle_response(
+        normalized_edges,
+        center_xy,
+        outer_radius,
+    )
+    if angle_values_deg.size == 0 or angle_response.size == 0:
+        return np.array([], dtype=np.float32), np.array([], dtype=np.float32)
+
+    angular_step_deg = float(angle_values_deg[1] - angle_values_deg[0]) if angle_values_deg.size > 1 else 0.25
+
+    def response_at(angle_deg):
+        wrapped_angle = float(angle_deg) % 360.0
+        sample_index = wrapped_angle / angular_step_deg
+        left_index = int(np.floor(sample_index)) % angle_response.shape[0]
+        right_index = (left_index + 1) % angle_response.shape[0]
+        mix = float(sample_index - np.floor(sample_index))
+        return float(angle_response[left_index] * (1.0 - mix) + angle_response[right_index] * mix)
+
+    coarse_offsets = np.arange(0.0, sector_step_deg, angular_step_deg, dtype=np.float32)
+    best_offset_deg = 0.0
+    best_offset_score = -1.0
+    for offset_deg in coarse_offsets:
+        score = sum(response_at(float(offset_deg + sector_index * sector_step_deg)) for sector_index in range(sector_count))
+        if score > best_offset_score:
+            best_offset_score = score
+            best_offset_deg = float(offset_deg)
+
+    boundary_angles = []
+    boundary_scores = []
+    for sector_index in range(sector_count):
+        base_angle_deg = best_offset_deg + sector_index * sector_step_deg
+        local_angles = np.arange(base_angle_deg - 4.0, base_angle_deg + 4.01, angular_step_deg, dtype=np.float32)
+        local_scores = np.array([response_at(float(candidate_angle_deg)) for candidate_angle_deg in local_angles], dtype=np.float32)
+        peak_score = float(np.max(local_scores)) if local_scores.size > 0 else 0.0
+        support_mask = local_scores >= peak_score * 0.65
+        if not np.any(support_mask):
+            support_mask = local_scores == np.max(local_scores)
+
+        support_angles_rad = np.deg2rad(local_angles[support_mask])
+        support_weights = np.clip(local_scores[support_mask], 1e-6, None)
+        mean_vector = np.array(
+            [
+                np.sum(np.cos(support_angles_rad) * support_weights),
+                np.sum(np.sin(support_angles_rad) * support_weights),
+            ],
+            dtype=np.float64,
+        )
+        best_angle_deg = float(np.degrees(np.arctan2(mean_vector[1], mean_vector[0])) % 360.0)
+        boundary_angles.append(best_angle_deg)
+        boundary_scores.append(peak_score)
+
+    order = np.argsort(np.asarray(boundary_angles, dtype=np.float32))
+    return (
+        np.asarray(boundary_angles, dtype=np.float32)[order],
+        np.asarray(boundary_scores, dtype=np.float32)[order],
+    )
+
+
+def _build_projected_sector_boundaries(rectified_center, outer_radius, boundary_angles_deg, inverse_homography, inner_ratio=OUTER_BULL_R, outer_ratio=1.0):
+    if boundary_angles_deg is None:
+        return [], []
+
+    center_xy = np.asarray(rectified_center, dtype=np.float32).reshape(2)
+    inner_radius = float(max(0.0, outer_radius * float(inner_ratio)))
+    outer_radius = float(max(inner_radius, outer_radius * float(outer_ratio)))
+    rectified_boundaries = []
+    image_boundaries = []
+
+    for angle_deg in np.asarray(boundary_angles_deg, dtype=np.float32):
+        angle_rad = np.deg2rad(float(angle_deg))
+        direction = np.array([np.cos(angle_rad), np.sin(angle_rad)], dtype=np.float32)
+        rectified_segment = np.vstack(
+            (
+                center_xy + direction * inner_radius,
+                center_xy + direction * outer_radius,
+            )
+        ).astype(np.float32)
+        rectified_boundaries.append(rectified_segment)
+        image_boundaries.append(_transform_points(rectified_segment, inverse_homography))
+
+    return rectified_boundaries, image_boundaries
 
 
 def _estimate_bull_center_in_normalized_image(normalized_gray, reference_center, outer_radius):
@@ -765,6 +969,17 @@ def detect_dartboard(image_path):
                 refined_rectification["outer_radius"],
                 refined_rectification["inverse_matrix"],
             )
+            sector_boundary_angles_deg, sector_boundary_scores = _detect_sector_boundary_angles(
+                normalized_edges,
+                bull_center_normalized,
+                refined_rectification["outer_radius"],
+            )
+            sector_boundaries_rectified, sector_boundaries_image = _build_projected_sector_boundaries(
+                bull_center_normalized,
+                refined_rectification["outer_radius"],
+                sector_boundary_angles_deg,
+                refined_rectification["inverse_matrix"],
+            )
             ring_styles = {
                 "double_outer": ((0, 255, 0), 2),
                 "double_inner": ((0, 200, 255), 2),
@@ -776,6 +991,10 @@ def detect_dartboard(image_path):
             for ring_name, image_points in ring_boundaries_image.items():
                 color, thickness = ring_styles.get(ring_name, ((200, 200, 200), 1))
                 _draw_projected_polyline(output, image_points, color, thickness)
+            for rectified_segment in sector_boundaries_rectified:
+                _draw_projected_segment(normalized_marker, rectified_segment, SEPARATOR_LINE_COLOR, 1)
+            for image_segment in sector_boundaries_image:
+                _draw_projected_segment(output, image_segment, SEPARATOR_LINE_COLOR, SEPARATOR_LINE_THICKNESS)
 
             detect_dartboard.last_normalization = {
                 **refined_rectification,
@@ -790,6 +1009,10 @@ def detect_dartboard(image_path):
                 "initial_bull_score": approx_bull_score,
                 "ring_boundaries_rectified": ring_boundaries_rectified,
                 "ring_boundaries_image": ring_boundaries_image,
+                "sector_boundary_angles_deg": sector_boundary_angles_deg,
+                "sector_boundary_scores": sector_boundary_scores,
+                "sector_boundaries_rectified": sector_boundaries_rectified,
+                "sector_boundaries_image": sector_boundaries_image,
                 "projection_geometry": projection_geometry,
             }
 
@@ -797,7 +1020,7 @@ def detect_dartboard(image_path):
 
 
 if __name__ == "__main__":
-    input_path = "../../../assets/dartboard-02.jpg"
+    input_path = "../../../assets/dartboard-01.jpg"
     result, gray, edges, best_ellipse, coverage, inlier_ratio = detect_dartboard(input_path)
 
     directory = os.path.dirname(input_path)
@@ -809,8 +1032,10 @@ if __name__ == "__main__":
     cv2.imwrite(output_path, result)
     if detect_dartboard.last_normalization is not None:
         cv2.imwrite(output_path_normalized, detect_dartboard.last_normalization["normalized_image"])
+        cv2.imwrite(output_path3, detect_dartboard.last_normalization["normalized_edges"])
+    else:
+        cv2.imwrite(output_path3, edges)
     cv2.imwrite(output_path2, gray)
-    cv2.imwrite(output_path3, edges)
 
     if best_ellipse is not None:
         (cx, cy), (a, b), angle = best_ellipse
