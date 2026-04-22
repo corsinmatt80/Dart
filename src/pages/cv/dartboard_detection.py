@@ -3,17 +3,6 @@ import cv2
 import numpy as np
 
 
-# Standard-WDF-Radien relativ zum äußeren Double-Ring.
-DARTBOARD_RING_DEFINITIONS = (
-    ("outer_double", 1.0),
-    ("inner_double", 162.0 / 170.0),
-    ("outer_triple", 107.0 / 170.0),
-    ("inner_triple", 99.0 / 170.0),
-    ("outer_bull", 15.9 / 170.0),
-    ("inner_bull", 6.35 / 170.0),
-)
-
-
 def _ellipse_metrics(points, ellipse):
     if points.size == 0:
         return np.array([], dtype=np.float32), np.array([], dtype=np.float32)
@@ -158,25 +147,6 @@ def _refit_ellipse_to_edges(initial_ellipse, edges, iterations=3, bins=120):
     return ellipse, coverage, inlier_ratio
 
 
-def _scale_ellipse(ellipse, radius_ratio):
-    (cx, cy), (axis_a, axis_b), angle = ellipse
-    return (
-        (float(cx), float(cy)),
-        (float(axis_a) * float(radius_ratio), float(axis_b) * float(radius_ratio)),
-        float(angle),
-    )
-
-
-def build_reference_ring_ellipses(reference_ellipse):
-    if reference_ellipse is None:
-        return []
-
-    return [
-        (name, _scale_ellipse(reference_ellipse, radius_ratio))
-        for name, radius_ratio in DARTBOARD_RING_DEFINITIONS
-    ]
-
-
 def detect_dartboard(image_path):
     img = cv2.imread(image_path)
     if img is None:
@@ -293,26 +263,21 @@ def detect_dartboard(image_path):
             best_coverage = 0.0
             best_inlier_ratio = 0.0
 
-    ring_ellipses = build_reference_ring_ellipses(best_ellipse)
-    accepted_ellipses = [ellipse for _, ellipse in ring_ellipses]
-
     output = img.copy()
 
-    if ring_ellipses:
-        for name, ellipse in ring_ellipses:
-            thickness = 3 if name == "outer_double" else 2
-            cv2.ellipse(output, ellipse, (0, 255, 0), thickness)
+    if best_ellipse is not None:
+        cv2.ellipse(output, best_ellipse, (0, 255, 0), 3)
 
     if best_ellipse is not None:
         (cx, cy), _, _ = best_ellipse
         cv2.circle(output, (int(cx), int(cy)), 4, (0, 255, 0), -1)
 
-    return output, gray, edges, best_ellipse, accepted_ellipses, best_coverage, best_inlier_ratio
+    return output, gray, edges, best_ellipse, best_coverage, best_inlier_ratio
 
 
 if __name__ == "__main__":
     input_path = "../../../assets/dartboard-01.jpg"
-    result, gray, edges, best_ellipse, accepted_ellipses, coverage, inlier_ratio = detect_dartboard(input_path)
+    result, gray, edges, best_ellipse, coverage, inlier_ratio = detect_dartboard(input_path)
 
     directory = os.path.dirname(input_path)
     output_path = os.path.join(directory, "ellipse_result.jpg")
@@ -326,7 +291,7 @@ if __name__ == "__main__":
     if best_ellipse is not None:
         (cx, cy), (a, b), angle = best_ellipse
         print(
-            f"Ellipse gefunden: center=({cx:.1f}, {cy:.1f}), axes=({a:.1f}, {b:.1f}), angle={angle:.1f}, ringe={len(accepted_ellipses)}, abdeckung={coverage:.2f}, inlier={inlier_ratio:.2f}"
+            f"Ellipse gefunden: center=({cx:.1f}, {cy:.1f}), axes=({a:.1f}, {b:.1f}), angle={angle:.1f}, abdeckung={coverage:.2f}, inlier={inlier_ratio:.2f}"
         )
     else:
         print("Keine passende Ellipse gefunden.")
