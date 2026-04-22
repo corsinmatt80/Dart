@@ -12,6 +12,9 @@ INNER_BULL_R = 6.35 / 170
 SECTOR_COUNT = 20
 SEPARATOR_LINE_COLOR = (255, 255, 0)
 SEPARATOR_LINE_THICKNESS = 2
+STANDARD_SECTOR_VALUES = (20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5)
+FIELD_LABEL_COLOR = (255, 255, 255)
+FIELD_LABEL_OUTLINE_COLOR = (0, 0, 0)
 
 
 def _major_minor_axis_info(ellipse):
@@ -289,6 +292,31 @@ def _draw_projected_segment(image, points, color, thickness):
     cv2.line(image, tuple(line[0]), tuple(line[1]), color, thickness, lineType=cv2.LINE_AA)
 
 
+def _draw_centered_text(image, text, center_xy, font_scale, color, outline_color=FIELD_LABEL_OUTLINE_COLOR, thickness=1):
+    if image is None or text is None or len(str(text)) == 0:
+        return
+
+    h, w = image.shape[:2]
+    center_xy = np.asarray(center_xy, dtype=np.float32).reshape(2)
+    x = int(round(float(center_xy[0])))
+    y = int(round(float(center_xy[1])))
+    if x < 0 or y < 0 or x >= w or y >= h:
+        return
+
+    font_scale = float(max(0.2, font_scale))
+    thickness = int(max(1, thickness))
+    font_face = cv2.FONT_HERSHEY_SIMPLEX
+    text = str(text)
+    (text_w, text_h), baseline = cv2.getTextSize(text, font_face, font_scale, thickness)
+    origin = (
+        int(round(float(center_xy[0]) - text_w * 0.5)),
+        int(round(float(center_xy[1]) + text_h * 0.5)),
+    )
+    outline_thickness = thickness + 2
+    cv2.putText(image, text, origin, font_face, font_scale, outline_color, outline_thickness, lineType=cv2.LINE_AA)
+    cv2.putText(image, text, origin, font_face, font_scale, color, thickness, lineType=cv2.LINE_AA)
+
+
 def _ellipse_projection_geometry(reference_ellipse):
     if reference_ellipse is None:
         return None
@@ -528,6 +556,173 @@ def _build_projected_sector_boundaries(rectified_center, outer_radius, boundary_
         image_boundaries.append(_transform_points(rectified_segment, inverse_homography))
 
     return rectified_boundaries, image_boundaries
+
+
+def _sector_mid_angles_from_boundaries(boundary_angles_deg):
+    boundaries = np.sort(np.asarray(boundary_angles_deg, dtype=np.float32) % 360.0)
+    if boundaries.size == 0:
+        return np.array([], dtype=np.float32)
+
+    next_boundaries = np.roll(boundaries, -1)
+    deltas = (next_boundaries - boundaries) % 360.0
+    return (boundaries + deltas * 0.5) % 360.0
+
+
+def _find_top_sector_index(mid_angles_deg, rectified_center=None, outer_radius=None, inverse_homography=None, top_angle_deg=270.0):
+    mid_angles_deg = np.asarray(mid_angles_deg, dtype=np.float32)
+    if mid_angles_deg.size == 0:
+        return None
+
+    if rectified_center is not None and outer_radius is not None and inverse_homography is not None and outer_radius > 0.0:
+        rectified_center = np.asarray(rectified_center, dtype=np.float32).reshape(2)
+        probe_radius_ratios = (
+            0.5 * (DOUBLE_INNER_R + 1.0),
+            0.5 * (TRIPLE_OUTER_R + DOUBLE_INNER_R),
+            0.5 * (TRIPLE_INNER_R + TRIPLE_OUTER_R),
+            0.5 * (OUTER_BULL_R + TRIPLE_INNER_R),
+        )
+
+        vertical_scores = []
+        for mid_angle_deg in mid_angles_deg:
+            angle_rad = np.deg2rad(float(mid_angle_deg))
+            direction = np.array([np.cos(angle_rad), np.sin(angle_rad)], dtype=np.float32)
+            projected_ys = []
+            for radius_ratio in probe_radius_ratios:
+                rectified_anchor = rectified_center + direction * float(outer_radius * radius_ratio)
+                image_anchor = _transform_points(np.array([rectified_anchor], dtype=np.float32), inverse_homography)[0]
+                projected_ys.append(float(image_anchor[1]))
+
+            vertical_scores.append(float(np.mean(projected_ys)))
+
+        return int(np.argmin(np.asarray(vertical_scores, dtype=np.float32)))
+
+    wrapped_distance = np.abs(((mid_angles_deg - float(top_angle_deg) + 180.0) % 360.0) - 180.0)
+    return int(np.argmin(wrapped_distance))
+
+
+def _build_field_labels(rectified_center, outer_radius, boundary_angles_deg, inverse_homography):
+    mid_angles_deg = _sector_mid_angles_from_boundaries(boundary_angles_deg)
+    if mid_angles_deg.size == 0 or outer_radius <= 0.0:
+        return [], []
+
+    rectified_center = np.asarray(rectified_center, dtype=np.float32).reshape(2)
+    top_sector_index = _find_top_sector_index(
+        mid_angles_deg,
+        rectified_center=rectified_center,
+        outer_radius=outer_radius,
+        inverse_homography=inverse_homography,
+    )
+    if top_sector_index is None:
+        return [], []
+
+    ordered_sector_values = [None] * mid_angles_deg.shape[0]
+    for index, sector_value in enumerate(STANDARD_SECTOR_VALUES[: mid_angles_deg.shape[0]]):
+        ordered_sector_values[(top_sector_index + index) % mid_angles_deg.shape[0]] = int(sector_value)
+
+    ring_definitions = (
+        ("double", 0.5 * (DOUBLE_INNER_R + 1.0), lambda value: value * 2, 0.70),
+        ("single_outer", 0.5 * (TRIPLE_OUTER_R + DOUBLE_INNER_R), lambda value: value, 0.78),
+        ("triple", 0.5 * (TRIPLE_INNER_R + TRIPLE_OUTER_R), lambda value: value * 3, 0.66),
+        ("single_inner", 0.5 * (OUTER_BULL_R + TRIPLE_INNER_R), lambda value: value, 0.72),
+    )
+
+    rectified_labels = []
+    image_labels = []
+    for sector_index, (mid_angle_deg, sector_value) in enumerate(zip(mid_angles_deg, ordered_sector_values)):
+        if sector_value is None:
+            continue
+        direction = np.array(
+            [
+                np.cos(np.deg2rad(float(mid_angle_deg))),
+                np.sin(np.deg2rad(float(mid_angle_deg))),
+            ],
+            dtype=np.float32,
+        )
+        for ring_name, radius_ratio, score_fn, font_factor in ring_definitions:
+            rectified_anchor = rectified_center + direction * float(outer_radius * radius_ratio)
+            score = int(score_fn(sector_value))
+            label = {
+                "text": str(score),
+                "score": score,
+                "sector_value": int(sector_value),
+                "ring_name": ring_name,
+                "sector_index": int(sector_index),
+                "angle_deg": float(mid_angle_deg),
+                "font_scale_factor": float(font_factor),
+                "rectified_anchor": (float(rectified_anchor[0]), float(rectified_anchor[1])),
+            }
+            rectified_labels.append(label)
+
+            image_anchor = _transform_points(np.array([rectified_anchor], dtype=np.float32), inverse_homography)[0]
+            image_labels.append(
+                {
+                    **label,
+                    "image_anchor": (float(image_anchor[0]), float(image_anchor[1])),
+                }
+            )
+
+    bull_labels_rectified = (
+        {
+            "text": "25",
+            "score": 25,
+            "sector_value": 25,
+            "ring_name": "outer_bull",
+            "sector_index": -1,
+            "angle_deg": 315.0,
+            "font_scale_factor": 0.72,
+            "rectified_anchor": (
+                float(rectified_center[0] + np.cos(np.deg2rad(315.0)) * outer_radius * ((INNER_BULL_R + OUTER_BULL_R) * 0.5)),
+                float(rectified_center[1] + np.sin(np.deg2rad(315.0)) * outer_radius * ((INNER_BULL_R + OUTER_BULL_R) * 0.5)),
+            ),
+        },
+        {
+            "text": "50",
+            "score": 50,
+            "sector_value": 50,
+            "ring_name": "inner_bull",
+            "sector_index": -1,
+            "angle_deg": 0.0,
+            "font_scale_factor": 0.80,
+            "rectified_anchor": (float(rectified_center[0]), float(rectified_center[1])),
+        },
+    )
+
+    for label in bull_labels_rectified:
+        rectified_labels.append(label)
+        image_anchor = _transform_points(
+            np.array([label["rectified_anchor"]], dtype=np.float32),
+            inverse_homography,
+        )[0]
+        image_labels.append(
+            {
+                **label,
+                "image_anchor": (float(image_anchor[0]), float(image_anchor[1])),
+            }
+        )
+
+    return rectified_labels, image_labels
+
+
+def _draw_field_labels(image, labels, outer_radius, anchor_key, base_scale_divisor=520.0):
+    if image is None or labels is None or outer_radius <= 0.0:
+        return
+
+    base_font_scale = float(np.clip(outer_radius / float(base_scale_divisor), 0.35, 1.8))
+    for label in labels:
+        anchor = label.get(anchor_key)
+        if anchor is None:
+            continue
+        font_scale = base_font_scale * float(label.get("font_scale_factor", 1.0))
+        thickness = 1 if font_scale < 0.9 else 2
+        _draw_centered_text(
+            image,
+            label.get("text", ""),
+            anchor,
+            font_scale,
+            FIELD_LABEL_COLOR,
+            outline_color=FIELD_LABEL_OUTLINE_COLOR,
+            thickness=thickness,
+        )
 
 
 def _estimate_bull_center_in_normalized_image(normalized_gray, reference_center, outer_radius):
@@ -980,6 +1175,12 @@ def detect_dartboard(image_path):
                 sector_boundary_angles_deg,
                 refined_rectification["inverse_matrix"],
             )
+            field_labels_rectified, field_labels_image = _build_field_labels(
+                bull_center_normalized,
+                refined_rectification["outer_radius"],
+                sector_boundary_angles_deg,
+                refined_rectification["inverse_matrix"],
+            )
             ring_styles = {
                 "double_outer": ((0, 255, 0), 2),
                 "double_inner": ((0, 200, 255), 2),
@@ -995,6 +1196,16 @@ def detect_dartboard(image_path):
                 _draw_projected_segment(normalized_marker, rectified_segment, SEPARATOR_LINE_COLOR, 1)
             for image_segment in sector_boundaries_image:
                 _draw_projected_segment(output, image_segment, SEPARATOR_LINE_COLOR, SEPARATOR_LINE_THICKNESS)
+            _draw_field_labels(normalized_marker, field_labels_rectified, refined_rectification["outer_radius"], "rectified_anchor", base_scale_divisor=430.0)
+            _draw_field_labels(output, field_labels_image, refined_rectification["outer_radius"], "image_anchor")
+            cv2.circle(
+                normalized_marker,
+                (int(round(bull_center_normalized[0])), int(round(bull_center_normalized[1]))),
+                6,
+                (255, 0, 0),
+                -1,
+            )
+            cv2.circle(output, back_center_xy, 6, (255, 0, 0), -1)
 
             detect_dartboard.last_normalization = {
                 **refined_rectification,
@@ -1013,6 +1224,8 @@ def detect_dartboard(image_path):
                 "sector_boundary_scores": sector_boundary_scores,
                 "sector_boundaries_rectified": sector_boundaries_rectified,
                 "sector_boundaries_image": sector_boundaries_image,
+                "field_labels_rectified": field_labels_rectified,
+                "field_labels_image": field_labels_image,
                 "projection_geometry": projection_geometry,
             }
 
@@ -1020,7 +1233,7 @@ def detect_dartboard(image_path):
 
 
 if __name__ == "__main__":
-    input_path = "../../../assets/dartboard-01.jpg"
+    input_path = "../../../assets/dartboard-02.jpg"
     result, gray, edges, best_ellipse, coverage, inlier_ratio = detect_dartboard(input_path)
 
     directory = os.path.dirname(input_path)
