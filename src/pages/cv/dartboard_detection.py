@@ -4,11 +4,11 @@ import numpy as np
 
 
 # Standard-WDF-Radien relativ zum äußeren Double-Ring.
-DOUBLE_INNER_R = 162.0 / 170.0
+DOUBLE_INNER_R = 160.0 / 170.0
 TRIPLE_OUTER_R = 107.0 / 170.0
-TRIPLE_INNER_R = 99.0 / 170.0
+TRIPLE_INNER_R = 96.0 / 170.0
 OUTER_BULL_R = 15.9 / 170.0
-INNER_BULL_R = 6.35 / 170.0
+INNER_BULL_R = 6.35 / 170
 
 
 def _major_minor_axis_info(ellipse):
@@ -50,7 +50,7 @@ def _build_ellipse_normalization_transform(image_shape, reference_ellipse, paddi
 
     major_radius = major_axis * 0.5
     minor_radius = minor_axis * 0.5
-    axis_ratio = minor_axis / major_axis
+    axis_ratio = float(minor_axis / max(major_axis, 1e-6))
     if axis_ratio <= 1e-6:
         return None, None, None, None
 
@@ -92,6 +92,12 @@ def _build_ellipse_normalization_transform(image_shape, reference_ellipse, paddi
     return matrix, inverse_matrix, output_size, (float(normalized_center[0]), float(normalized_center[1]))
 
 
+def _affine_matrix_to_homography(matrix):
+    homography = np.eye(3, dtype=np.float32)
+    homography[:2, :] = np.asarray(matrix, dtype=np.float32)
+    return homography
+
+
 def _transform_points(points, matrix):
     pts = np.asarray(points, dtype=np.float32)
     if pts.ndim == 1:
@@ -99,10 +105,176 @@ def _transform_points(points, matrix):
     if pts.size == 0:
         return np.empty((0, 2), dtype=np.float32)
 
+    matrix = np.asarray(matrix, dtype=np.float32)
     ones = np.ones((pts.shape[0], 1), dtype=np.float32)
     homogeneous = np.hstack((pts, ones))
-    transformed = homogeneous @ matrix.astype(np.float32).T
-    return transformed.astype(np.float32)
+
+    if matrix.shape == (2, 3):
+        transformed = homogeneous @ matrix.T
+        return transformed.astype(np.float32)
+
+    if matrix.shape == (3, 3):
+        transformed = homogeneous @ matrix.T
+        scale = np.clip(transformed[:, 2:3], 1e-6, None)
+        return (transformed[:, :2] / scale).astype(np.float32)
+
+    raise ValueError("Transformationsmatrix muss 2x3 oder 3x3 sein.")
+
+
+def _sample_ellipse_points(ellipse, point_count=180):
+    samples, _ = _sample_ellipse_with_normals(ellipse, point_count)
+    return samples.astype(np.float32)
+
+
+def _ellipse_to_conic_matrix(ellipse):
+    (cx, cy), (axis_a, axis_b), angle_deg = ellipse
+    rx = float(axis_a) * 0.5
+    ry = float(axis_b) * 0.5
+    if rx <= 1e-6 or ry <= 1e-6:
+        return None
+
+    angle = np.deg2rad(float(angle_deg))
+    cos_t = np.cos(angle)
+    sin_t = np.sin(angle)
+    transform = np.array(
+        [
+            [rx * cos_t, -ry * sin_t, cx],
+            [rx * sin_t, ry * cos_t, cy],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    inverse_transform = np.linalg.inv(transform)
+    unit_circle = np.diag([1.0, 1.0, -1.0]).astype(np.float64)
+    conic = inverse_transform.T @ unit_circle @ inverse_transform
+    return ((conic + conic.T) * 0.5).astype(np.float64)
+
+
+def _fit_ellipse_to_points(points):
+    pts = np.asarray(points, dtype=np.float32)
+    if pts.ndim == 1:
+        pts = pts.reshape(1, 2)
+    if pts.shape[0] < 5:
+        return None
+    return cv2.fitEllipse(pts.reshape(-1, 1, 2))
+
+
+def _build_planar_rectification_homography(image_shape, reference_ellipse, board_center, padding_ratio=0.15, point_count=360):
+    if reference_ellipse is None or board_center is None:
+        return None
+
+    center_xy = np.asarray(board_center, dtype=np.float64).reshape(2)
+    conic = _ellipse_to_conic_matrix(reference_ellipse)
+    if conic is None:
+        return None
+
+    center_h = np.array([center_xy[0], center_xy[1], 1.0], dtype=np.float64)
+    vanishing_line = conic @ center_h
+    if not np.all(np.isfinite(vanishing_line)):
+        return None
+
+    if np.linalg.norm(vanishing_line[:2]) <= 1e-8:
+        projective_rectification = np.eye(3, dtype=np.float32)
+    else:
+        if abs(vanishing_line[2]) <= 1e-8:
+            return None
+        projective_rectification = np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [vanishing_line[0] / vanishing_line[2], vanishing_line[1] / vanishing_line[2], 1.0],
+            ],
+            dtype=np.float32,
+        )
+
+    outer_ring_points = _sample_ellipse_points(reference_ellipse, point_count=point_count)
+    affine_rectified_points = _transform_points(outer_ring_points, projective_rectification)
+    affine_rectified_ellipse = _fit_ellipse_to_points(affine_rectified_points)
+    if affine_rectified_ellipse is None:
+        return None
+
+    affine_matrix, _, output_size, normalized_center = _build_ellipse_normalization_transform(
+        image_shape,
+        affine_rectified_ellipse,
+        padding_ratio=padding_ratio,
+    )
+    if affine_matrix is None or output_size is None or normalized_center is None:
+        return None
+
+    affine_homography = _affine_matrix_to_homography(affine_matrix)
+    homography = affine_homography @ projective_rectification
+    if not np.all(np.isfinite(homography)):
+        return None
+
+    try:
+        inverse_homography = np.linalg.inv(homography).astype(np.float32)
+    except np.linalg.LinAlgError:
+        return None
+
+    rectified_outer_points = _transform_points(outer_ring_points, homography)
+    rectified_outer_ellipse = _fit_ellipse_to_points(rectified_outer_points)
+    if rectified_outer_ellipse is None:
+        return None
+
+    (_, _), (axis_a, axis_b), _ = rectified_outer_ellipse
+    outer_radius = float(axis_a + axis_b) * 0.25
+    if outer_radius <= 1e-6:
+        return None
+
+    axis_ratio = min(float(axis_a), float(axis_b)) / max(float(axis_a), float(axis_b), 1e-6)
+
+    return {
+        "matrix": homography.astype(np.float32),
+        "inverse_matrix": inverse_homography,
+        "output_size": output_size,
+        "normalized_center": (float(normalized_center[0]), float(normalized_center[1])),
+        "outer_radius": outer_radius,
+        "vanishing_line": vanishing_line.astype(np.float32),
+        "projective_matrix": projective_rectification,
+        "affine_matrix": affine_homography,
+        "rectified_outer_ellipse": rectified_outer_ellipse,
+        "rectified_outer_axis_ratio": float(axis_ratio),
+    }
+
+
+def _sample_circle_points(center_xy, radius, point_count=360):
+    if radius <= 0.0:
+        return np.empty((0, 2), dtype=np.float32)
+
+    angles = np.linspace(0.0, 2.0 * np.pi, point_count, endpoint=False, dtype=np.float32)
+    center_xy = np.asarray(center_xy, dtype=np.float32).reshape(2)
+    x = center_xy[0] + np.cos(angles) * float(radius)
+    y = center_xy[1] + np.sin(angles) * float(radius)
+    return np.column_stack((x, y)).astype(np.float32)
+
+
+def _build_projected_ring_boundaries(rectified_center, outer_radius, inverse_homography, point_count=360):
+    ring_ratios = {
+        "double_outer": 1.0,
+        "double_inner": DOUBLE_INNER_R,
+        "triple_outer": TRIPLE_OUTER_R,
+        "triple_inner": TRIPLE_INNER_R,
+        "outer_bull": OUTER_BULL_R,
+        "inner_bull": INNER_BULL_R,
+    }
+    rectified_boundaries = {}
+    image_boundaries = {}
+
+    for ring_name, ring_ratio in ring_ratios.items():
+        rectified_points = _sample_circle_points(rectified_center, outer_radius * float(ring_ratio), point_count=point_count)
+        rectified_boundaries[ring_name] = rectified_points
+        image_boundaries[ring_name] = _transform_points(rectified_points, inverse_homography)
+
+    return rectified_boundaries, image_boundaries
+
+
+def _draw_projected_polyline(image, points, color, thickness):
+    pts = np.asarray(points, dtype=np.float32)
+    if pts.ndim != 2 or pts.shape[0] < 2:
+        return
+
+    polyline = np.rint(pts).astype(np.int32).reshape(-1, 1, 2)
+    cv2.polylines(image, [polyline], True, color, thickness, lineType=cv2.LINE_AA)
 
 
 def _ellipse_projection_geometry(reference_ellipse):
@@ -470,36 +642,104 @@ def detect_dartboard(image_path):
     if best_ellipse is not None:
         cv2.ellipse(output, best_ellipse, (0, 255, 0), 3)
 
-        matrix, inverse_matrix, output_size, normalized_center = _build_ellipse_normalization_transform(
+        initial_matrix, initial_inverse_matrix, initial_output_size, initial_normalized_center = _build_ellipse_normalization_transform(
             img.shape,
             best_ellipse,
         )
         projection_geometry = _ellipse_projection_geometry(best_ellipse)
 
-        if matrix is not None and inverse_matrix is not None and output_size is not None and normalized_center is not None:
-            normalized_image = cv2.warpAffine(
-                img,
-                matrix,
-                output_size,
-                flags=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=(0, 0, 0),
-            )
-            normalized_gray = cv2.warpAffine(
+        approx_board_center = np.array(best_ellipse[0], dtype=np.float32)
+        approx_bull_score = None
+        if (
+            initial_matrix is not None
+            and initial_inverse_matrix is not None
+            and initial_output_size is not None
+            and initial_normalized_center is not None
+        ):
+            initial_normalized_gray = cv2.warpAffine(
                 gray,
-                matrix,
-                output_size,
+                initial_matrix,
+                initial_output_size,
                 flags=cv2.INTER_LINEAR,
                 borderMode=cv2.BORDER_CONSTANT,
                 borderValue=0,
             )
+            initial_outer_radius = projection_geometry["major_axis"] * 0.5 if projection_geometry is not None else max(initial_output_size) * 0.25
+            approx_bull_normalized, approx_bull_score, _ = _estimate_bull_center_in_normalized_image(
+                initial_normalized_gray,
+                initial_normalized_center,
+                initial_outer_radius,
+            )
+            approx_board_center = _transform_points(
+                np.array([approx_bull_normalized], dtype=np.float32),
+                initial_inverse_matrix,
+            )[0]
 
+        rectification = _build_planar_rectification_homography(
+            img.shape,
+            best_ellipse,
+            approx_board_center,
+        )
+
+        if rectification is not None:
+            refined_rectification = rectification
+            for _ in range(2):
+                normalized_gray = cv2.warpPerspective(
+                    gray,
+                    refined_rectification["matrix"],
+                    refined_rectification["output_size"],
+                    flags=cv2.INTER_LINEAR,
+                    borderMode=cv2.BORDER_CONSTANT,
+                    borderValue=0,
+                )
+                normalized_image = cv2.warpPerspective(
+                    img,
+                    refined_rectification["matrix"],
+                    refined_rectification["output_size"],
+                    flags=cv2.INTER_LINEAR,
+                    borderMode=cv2.BORDER_CONSTANT,
+                    borderValue=(0, 0, 0),
+                )
+
+                bull_center_normalized, bull_score, normalized_edges = _estimate_bull_center_in_normalized_image(
+                    normalized_gray,
+                    refined_rectification["normalized_center"],
+                    refined_rectification["outer_radius"],
+                )
+                back_transformed_center = _transform_points(
+                    np.array([bull_center_normalized], dtype=np.float32),
+                    refined_rectification["inverse_matrix"],
+                )[0]
+                next_rectification = _build_planar_rectification_homography(
+                    img.shape,
+                    best_ellipse,
+                    back_transformed_center,
+                )
+                if next_rectification is None:
+                    break
+                refined_rectification = next_rectification
+
+            normalized_gray = cv2.warpPerspective(
+                gray,
+                refined_rectification["matrix"],
+                refined_rectification["output_size"],
+                flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=0,
+            )
+            normalized_image = cv2.warpPerspective(
+                img,
+                refined_rectification["matrix"],
+                refined_rectification["output_size"],
+                flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=(0, 0, 0),
+            )
             normalized_marker = normalized_image.copy()
-            outer_radius = projection_geometry["major_axis"] * 0.5 if projection_geometry is not None else max(output_size) * 0.25
             bull_center_normalized, bull_score, normalized_edges = _estimate_bull_center_in_normalized_image(
                 normalized_gray,
-                normalized_center,
-                outer_radius,
+                refined_rectification["normalized_center"],
+                refined_rectification["outer_radius"],
             )
             bull_center_xy = np.array([bull_center_normalized], dtype=np.float32)
             cv2.circle(
@@ -510,26 +750,46 @@ def detect_dartboard(image_path):
                 -1,
             )
 
-            back_transformed_center = _transform_points(bull_center_xy, inverse_matrix)[0]
+            back_transformed_center = _transform_points(
+                bull_center_xy,
+                refined_rectification["inverse_matrix"],
+            )[0]
             back_center_xy = (
                 int(round(float(back_transformed_center[0]))),
                 int(round(float(back_transformed_center[1]))),
             )
             cv2.circle(output, back_center_xy, 6, (255, 0, 0), -1)
 
+            ring_boundaries_rectified, ring_boundaries_image = _build_projected_ring_boundaries(
+                bull_center_normalized,
+                refined_rectification["outer_radius"],
+                refined_rectification["inverse_matrix"],
+            )
+            ring_styles = {
+                "double_outer": ((0, 255, 0), 2),
+                "double_inner": ((0, 200, 255), 2),
+                "triple_outer": ((255, 180, 0), 2),
+                "triple_inner": ((255, 120, 0), 2),
+                "outer_bull": ((255, 0, 255), 2),
+                "inner_bull": ((0, 0, 255), 2),
+            }
+            for ring_name, image_points in ring_boundaries_image.items():
+                color, thickness = ring_styles.get(ring_name, ((200, 200, 200), 1))
+                _draw_projected_polyline(output, image_points, color, thickness)
+
             detect_dartboard.last_normalization = {
-                "matrix": matrix,
-                "inverse_matrix": inverse_matrix,
-                "output_size": output_size,
-                "normalized_center": normalized_center,
-                "bull_center_normalized": bull_center_normalized,
+                **refined_rectification,
                 "normalized_image": normalized_marker,
                 "normalized_edges": normalized_edges,
+                "bull_center_normalized": bull_center_normalized,
                 "back_transformed_center": (
                     float(back_transformed_center[0]),
                     float(back_transformed_center[1]),
                 ),
                 "bull_score": bull_score,
+                "initial_bull_score": approx_bull_score,
+                "ring_boundaries_rectified": ring_boundaries_rectified,
+                "ring_boundaries_image": ring_boundaries_image,
                 "projection_geometry": projection_geometry,
             }
 
@@ -537,7 +797,7 @@ def detect_dartboard(image_path):
 
 
 if __name__ == "__main__":
-    input_path = "../../../assets/dartboard-02.jpg"
+    input_path = "../../../assets/dartboard-01.jpg"
     result, gray, edges, best_ellipse, coverage, inlier_ratio = detect_dartboard(input_path)
 
     directory = os.path.dirname(input_path)
