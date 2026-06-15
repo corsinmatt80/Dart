@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, X } from 'lucide-react';
+import { DARTBOARD_ORDER } from '../games/types';
 
 interface CameraCaptureProps {
   onHit: (hitData: { x: number; y: number; value: number; multiplier: number }) => void;
@@ -172,9 +173,7 @@ function CameraCapture({ onHit, onBack, disabled = false }: CameraCaptureProps) 
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
     // Dartscheibe Zahlen (oben anfangen, clockwise)
-    const dartNumbers = [
-      20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5,
-    ];
+    const dartNumbers = DARTBOARD_ORDER;
 
     // Normalisiere Winkel (0-360)
     let normalizedAngle = (angle + 90 + 360) % 360;
