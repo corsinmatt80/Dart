@@ -1,4 +1,5 @@
 import { Player, HitData } from '../types';
+import { deepClone } from '../../utils/clone';
 
 // Cricket targets: 15, 16, 17, 18, 19, 20, Bull (25)
 export const CRICKET_TARGETS = [20, 19, 18, 17, 16, 15, 25] as const;
@@ -48,7 +49,7 @@ export function processCricketHit(
   state: CricketGameState,
   hitData: HitData
 ): CricketGameState {
-  const newState = JSON.parse(JSON.stringify(state)) as CricketGameState;
+  const newState = deepClone(state);
   const currentPlayer = newState.players[newState.currentPlayerIndex];
   
   currentPlayer.shots += 1;
@@ -119,7 +120,7 @@ export function processCricketHit(
 }
 
 function endCricketTurn(state: CricketGameState): CricketGameState {
-  const newState = JSON.parse(JSON.stringify(state)) as CricketGameState;
+  const newState = deepClone(state);
   
   const nextPlayerIndex = (newState.currentPlayerIndex + 1) % newState.players.length;
   

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Camera, Wifi, WifiOff, RotateCcw, Check, Target, ZoomIn, ZoomOut, Move } from 'lucide-react';
 import { detectDartboardEllipse } from './cv/dartboardDetection';
+import { DARTBOARD_ORDER } from '../games/types';
 
 // ============ TYPES ============
 interface Point {
@@ -40,7 +41,7 @@ interface DartHit {
 type CalibrationMode = 'auto-detecting' | 'manual-adjust' | 'confirming' | 'set-20' | 'active';
 
 // ============ CONSTANTS ============
-const DART_NUMBERS = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
+const DART_NUMBERS = DARTBOARD_ORDER;
 const SEGMENT_ANGLE = 18; // degrees per segment
 
 // Ring boundaries for standard steel dartboard (relative to double outer radius = 170 mm)

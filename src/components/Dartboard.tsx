@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { DARTBOARD_SECTIONS } from '../games/types';
+import { DARTBOARD_SECTIONS, DARTBOARD_ORDER } from '../games/types';
 import { HitData } from '../games/types';
 
 interface DartboardProps {
@@ -46,9 +46,7 @@ function Dartboard({ onHit, disabled = false }: DartboardProps) {
     const normalizedDistance = distance / radius;
 
     // Dartscheibe Zahlen (oben anfangen, clockwise)
-    const dartNumbers = [
-      20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5,
-    ];
+    const dartNumbers = DARTBOARD_ORDER;
 
     // Normalisiere Winkel (0-360)
     let normalizedAngle = (angle + 90 + 360) % 360;

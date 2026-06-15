@@ -1,4 +1,5 @@
 import { Player, HitData } from '../types';
+import { deepClone } from '../../utils/clone';
 
 export interface LimboPlayerState {
   lives: number;
@@ -47,7 +48,7 @@ export function processLimboHit(
   state: LimboGameState,
   hitData: HitData
 ): LimboGameState {
-  const newState = JSON.parse(JSON.stringify(state)) as LimboGameState;
+  const newState = deepClone(state);
   const currentPlayer = newState.players[newState.currentPlayerIndex];
   
   // Miss counts as 25 points!

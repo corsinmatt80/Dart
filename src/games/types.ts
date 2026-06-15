@@ -1,5 +1,10 @@
 export type GameType = 'killer' | 'darts501' | 'cricket' | 'limbo';
-export type InputMode = 'manual' | 'camera' | 'api';
+export type InputMode = 'manual' | 'camera';
+
+/** Zahlen-Reihenfolge eines Standard-Dartboards im Uhrzeigersinn ab oben (20). */
+export const DARTBOARD_ORDER: number[] = [
+  20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5,
+];
 
 export interface Player {
   id: string;
@@ -24,23 +29,23 @@ export const DARTBOARD_SECTIONS: DartboardSection[] = [
   // Singles
   ...Array.from({ length: 20 }, (_, i) => ({
     id: `single_${i}`,
-    value: [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5][i],
+    value: DARTBOARD_ORDER[i],
     multiplier: 1 as const,
-    label: `1x ${[20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5][i]}`,
+    label: `1x ${DARTBOARD_ORDER[i]}`,
   })),
   // Doubles
   ...Array.from({ length: 20 }, (_, i) => ({
     id: `double_${i}`,
-    value: [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5][i],
+    value: DARTBOARD_ORDER[i],
     multiplier: 2 as const,
-    label: `2x ${[20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5][i]}`,
+    label: `2x ${DARTBOARD_ORDER[i]}`,
   })),
   // Triples
   ...Array.from({ length: 20 }, (_, i) => ({
     id: `triple_${i}`,
-    value: [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5][i],
+    value: DARTBOARD_ORDER[i],
     multiplier: 3 as const,
-    label: `3x ${[20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5][i]}`,
+    label: `3x ${DARTBOARD_ORDER[i]}`,
   })),
   // Bullseye
   {
