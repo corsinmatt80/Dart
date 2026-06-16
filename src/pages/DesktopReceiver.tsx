@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Smartphone, Wifi, WifiOff, ArrowLeft } from 'lucide-react';
 import { navigateToMenu } from '../App';
-import { loadOpenCV, type CV } from '../lib/opencv';
+import { loadOpenCV, resetOpenCV, type CV } from '../lib/opencv';
 import { detectBoard, drawOverlay } from '../lib/dartDetector';
 import { createHost, type ConnState } from '../lib/connection';
 import { scorePoint, type DetectionResult } from '../lib/dartGeometry';
@@ -13,27 +13,48 @@ export default function DesktopReceiver() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const resultRef = useRef<DetectionResult | null>(null);
+  const cvRef = useRef<CV | null>(null);
 
   const [hostId, setHostId] = useState('');
   const [state, setState] = useState<ConnState>('connecting');
   const [cvStatus, setCvStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [cvError, setCvError] = useState('');
+  const [cvRetry, setCvRetry] = useState(0);
   const [metrics, setMetrics] = useState<{ conf: number; rms: number; center: string } | null>(null);
 
   const cameraUrl = `${window.location.origin}${window.location.pathname}#/camera?h=${hostId}`;
 
+  // OpenCV separat laden (entkoppelt von der Verbindung) – ueber cvRetry retrybar.
   useEffect(() => {
-    let cv: CV | null = null;
-    let raf = 0;
-    let lastDetect = 0;
     let disposed = false;
-
+    setCvStatus('loading');
+    setCvError('');
     loadOpenCV()
       .then((c) => {
         if (disposed) return;
-        cv = c;
+        cvRef.current = c;
         setCvStatus('ready');
       })
-      .catch(() => setCvStatus('error'));
+      .catch((e: unknown) => {
+        if (disposed) return;
+        cvRef.current = null;
+        setCvStatus('error');
+        setCvError(e instanceof Error ? e.message : String(e));
+        console.error('OpenCV-Ladefehler:', e);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [cvRetry]);
+
+  const retryCv = () => {
+    resetOpenCV();
+    setCvRetry((n) => n + 1);
+  };
+
+  useEffect(() => {
+    let raf = 0;
+    let lastDetect = 0;
 
     const host = createHost((stream) => {
       const v = videoRef.current;
@@ -57,6 +78,7 @@ export default function DesktopReceiver() {
       if (!ctx) return;
       ctx.drawImage(v, 0, 0, c.width, c.height);
 
+      const cv = cvRef.current;
       if (cv && t - lastDetect > DETECT_INTERVAL_MS) {
         lastDetect = t;
         try {
@@ -82,7 +104,6 @@ export default function DesktopReceiver() {
     raf = requestAnimationFrame(loop);
 
     return () => {
-      disposed = true;
       cancelAnimationFrame(raf);
       host.destroy();
     };
@@ -132,10 +153,25 @@ export default function DesktopReceiver() {
             </div>
             <div className="mt-2 text-sm">
               OpenCV:{' '}
-              {cvStatus === 'loading' && <span className="text-yellow-400">lädt …</span>}
+              {cvStatus === 'loading' && <span className="text-yellow-400">lädt … (~10 MB)</span>}
               {cvStatus === 'ready' && <span className="text-green-400">bereit</span>}
               {cvStatus === 'error' && <span className="text-red-400">Fehler</span>}
             </div>
+            {cvStatus === 'error' && (
+              <div className="mt-2 rounded border border-red-500/50 bg-red-900/30 p-2 text-xs text-red-200">
+                <p className="mb-2">
+                  OpenCV (Dartboard-Erkennung) konnte nicht geladen werden. Verbindung und Live-Bild
+                  funktionieren trotzdem; nur die automatische Erkennung ist deaktiviert.
+                </p>
+                {cvError && <p className="mb-2 break-all opacity-70">{cvError}</p>}
+                <button
+                  onClick={retryCv}
+                  className="rounded bg-red-500/80 px-3 py-1 font-semibold text-white hover:bg-red-500"
+                >
+                  Erneut versuchen
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Video + Overlay */}
