@@ -10,13 +10,14 @@ import CricketGame from './games/cricket/CricketGame';
 import CricketSetup from './games/cricket/CricketSetup';
 import LimboGame from './games/limbo/LimboGame';
 import LimboSetup from './games/limbo/LimboSetup';
-import MobileCamera from './pages/MobileCameraV3';
+import PhoneCamera from './pages/PhoneCamera';
+import DesktopReceiver from './pages/DesktopReceiver';
 import './styles/global.css';
 
-// Helper to get route from hash
+// Helper to get route from hash (Query-Parameter wie ?h=... abschneiden)
 function getRouteFromHash(): string {
-  const hash = window.location.hash.toLowerCase().replace('#', '').replace('/', '');
-  return hash;
+  const raw = window.location.hash.replace(/^#\/?/, '');
+  return raw.split('?')[0].toLowerCase();
 }
 
 // Helper to navigate
@@ -34,6 +35,7 @@ function App() {
   // Get route from hash
   const route = getRouteFromHash();
   const isMobileCamera = route === 'camera';
+  const isConnect = route === 'connect';
 
   // Sync hash with game state
   useEffect(() => {
@@ -97,9 +99,14 @@ function App() {
     };
   }, [recordHit]);
 
-  // Show mobile camera if requested
+  // Handy-Kamera-Seite (wird per QR-Code geoeffnet)
   if (isMobileCamera) {
-    return <MobileCamera />;
+    return <PhoneCamera />;
+  }
+
+  // Desktop-Empfaenger (zeigt QR, empfaengt Stream, fuehrt Detection aus)
+  if (isConnect) {
+    return <DesktopReceiver />;
   }
 
   // Show player setup if no players
