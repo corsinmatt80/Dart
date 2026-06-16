@@ -1,4 +1,5 @@
-import { Player, HitData } from '../types';
+import { Player, HitData, DARTBOARD_ORDER } from '../types';
+import { deepClone } from '../../utils/clone';
 
 export interface KillerGameState {
   players: (Player & {
@@ -10,12 +11,6 @@ export interface KillerGameState {
   currentPlayerIndex: number;
   winner: Player | null;
   gamePhase: 'setup' | 'playing' | 'ended';
-}
-
-export interface KillerGameActions {
-  recordHit(hitData: HitData): void;
-  endTurn(): void;
-  reset(): void;
 }
 
 export function createInitialKillerState(players: Player[]): KillerGameState {
@@ -37,7 +32,7 @@ export function createInitialKillerState(players: Player[]): KillerGameState {
 }
 
 function assignBalancedRandomNumbers(playerCount: number): number[] {
-  const numbers = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
+  const numbers = [...DARTBOARD_ORDER];
   const assigned: number[] = [];
   const used = new Set<number>();
 
@@ -64,7 +59,7 @@ export function procesKillerHit(
   state: KillerGameState,
   hitData: HitData
 ): KillerGameState {
-  const newState = JSON.parse(JSON.stringify(state)) as KillerGameState;
+  const newState = deepClone(state);
   const currentPlayer = newState.players[newState.currentPlayerIndex];
 
   currentPlayer.shots += 1;

@@ -1,4 +1,5 @@
 import { Player, HitData } from '../types';
+import { deepClone } from '../../utils/clone';
 
 export type InMode = 'straight' | 'double';
 export type OutMode = 'straight' | 'double' | 'master';
@@ -22,12 +23,6 @@ export interface Darts501GameState {
   winner: Player | null;
   gamePhase: 'setup' | 'playing' | 'ended';
   options: Darts501Options;
-}
-
-export interface Darts501GameActions {
-  recordHit(hitData: HitData): void;
-  endTurn(): void;
-  reset(): void;
 }
 
 export const DEFAULT_501_OPTIONS: Darts501Options = {
@@ -61,7 +56,7 @@ export function processDarts501Hit(
   state: Darts501GameState,
   hitData: HitData
 ): Darts501GameState {
-  const newState = JSON.parse(JSON.stringify(state)) as Darts501GameState;
+  const newState = deepClone(state);
   const currentPlayer = newState.players[newState.currentPlayerIndex];
   const { inMode, outMode } = newState.options;
 
@@ -140,7 +135,7 @@ function checkValidFinish(multiplier: number, outMode: OutMode): boolean {
 }
 
 function endDarts501Turn(state: Darts501GameState): Darts501GameState {
-  const newState = JSON.parse(JSON.stringify(state)) as Darts501GameState;
+  const newState = deepClone(state);
   
   // Move to next player
   newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % newState.players.length;

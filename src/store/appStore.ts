@@ -5,6 +5,7 @@ import { Darts501GameState, Darts501Options, createInitialDarts501State, process
 import { CricketGameState, createInitialCricketState, processCricketHit } from '../games/cricket/types';
 import { LimboGameState, createInitialLimboState, processLimboHit } from '../games/limbo/types';
 import { HitData } from '../games/types';
+import { deepClone } from '../utils/clone';
 
 type GameState = KillerGameState | Darts501GameState | CricketGameState | LimboGameState | null;
 
@@ -73,7 +74,7 @@ export const useAppStore = create<AppStore>((set) => ({
       currentGame: game,
       players,
       gameState,
-      initialGameState: JSON.parse(JSON.stringify(gameState)),
+      initialGameState: deepClone(gameState),
       history: [],
     });
   },
@@ -86,7 +87,7 @@ export const useAppStore = create<AppStore>((set) => ({
       players,
       gameState,
       darts501Options: options,
-      initialGameState: JSON.parse(JSON.stringify(gameState)),
+      initialGameState: deepClone(gameState),
       history: [],
     });
   },
@@ -98,7 +99,7 @@ export const useAppStore = create<AppStore>((set) => ({
       currentGame: 'cricket',
       players,
       gameState,
-      initialGameState: JSON.parse(JSON.stringify(gameState)),
+      initialGameState: deepClone(gameState),
       history: [],
     });
   },
@@ -111,7 +112,7 @@ export const useAppStore = create<AppStore>((set) => ({
       players,
       gameState,
       limboOptions: { startLimit, lives },
-      initialGameState: JSON.parse(JSON.stringify(gameState)),
+      initialGameState: deepClone(gameState),
       history: [],
     });
   },
@@ -120,7 +121,7 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => {
       if (!state.gameState || !state.currentGame) return state;
 
-      const newHistory = [...state.history, JSON.parse(JSON.stringify(state.gameState))];
+      const newHistory = [...state.history, deepClone(state.gameState)];
 
       let newGameState: GameState = null;
       if (state.currentGame === 'killer') {
@@ -143,7 +144,7 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => {
       if (!state.gameState || !state.currentGame) return state;
 
-      const newState = JSON.parse(JSON.stringify(state.gameState));
+      const newState = deepClone(state.gameState);
 
       if (state.currentGame === 'killer') {
         const killerState = newState as KillerGameState;
@@ -181,7 +182,7 @@ export const useAppStore = create<AppStore>((set) => ({
 
     return {
       gameState: newGameState,
-      initialGameState: JSON.parse(JSON.stringify(newGameState)),
+      initialGameState: deepClone(newGameState),
       history: [],
     };
   }),

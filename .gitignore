@@ -11,6 +11,12 @@ node_modules
 dist-ssr
 *.local
 
+# Python / CV detection artifacts
+__pycache__/
+*.pyc
+.venv/
+assets/detection_out/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
