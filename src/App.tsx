@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from './store/appStore';
 import PlayerSetup from './components/PlayerSetup';
 import GameMenu from './components/GameMenu';
@@ -32,8 +32,9 @@ export function navigateToMenu() {
 function App() {
   const { currentGame, gameState, players, recordHit, initializeDarts501, initializeCricket, initializeLimbo, setCurrentGame, initializeGame, resetGame } = useAppStore();
 
-  // Get route from hash
-  const route = getRouteFromHash();
+  // Get route from hash (als State, damit hashchange ein Re-Render ausloest –
+  // sonst erscheinen Routen wie 'connect'/'camera' nur bei hartem Reload)
+  const [route, setRoute] = useState(getRouteFromHash);
   const isMobileCamera = route === 'camera';
   const isConnect = route === 'connect';
 
@@ -41,7 +42,8 @@ function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const newRoute = getRouteFromHash();
-      
+      setRoute(newRoute);
+
       if (newRoute === 'killer' && currentGame !== 'killer') {
         setCurrentGame('killer');
       } else if (newRoute === 'darts501' && currentGame !== 'darts501') {
