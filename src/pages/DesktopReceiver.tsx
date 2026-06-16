@@ -17,15 +17,22 @@ export default function DesktopReceiver() {
 
   const [hostId, setHostId] = useState('');
   const [state, setState] = useState<ConnState>('connecting');
-  const [cvStatus, setCvStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [cvStatus, setCvStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [cvError, setCvError] = useState('');
   const [cvRetry, setCvRetry] = useState(0);
   const [metrics, setMetrics] = useState<{ conf: number; rms: number; center: string } | null>(null);
 
   const cameraUrl = `${window.location.origin}${window.location.pathname}#/camera?h=${hostId}`;
 
-  // OpenCV separat laden (entkoppelt von der Verbindung) – ueber cvRetry retrybar.
+  // OpenCV erst laden, wenn die Verbindung steht – das Parsen von ~10 MB JS
+  // blockiert den Main Thread und wuerde sonst den WebRTC-Handshake stoeren
+  // ("Bild kommt nicht an"). Ueber cvRetry retrybar.
   useEffect(() => {
+    if (state !== 'connected') return;
+    if (cvRef.current) {
+      setCvStatus('ready');
+      return;
+    }
     let disposed = false;
     setCvStatus('loading');
     setCvError('');
@@ -45,16 +52,17 @@ export default function DesktopReceiver() {
     return () => {
       disposed = true;
     };
-  }, [cvRetry]);
+  }, [state, cvRetry]);
 
   const retryCv = () => {
     resetOpenCV();
     setCvRetry((n) => n + 1);
   };
 
+  // Verbindung + Render-Loop. Render zeichnet nur das Frame (schnell), damit
+  // das Live-Bild nicht durch teure Detection stockt.
   useEffect(() => {
     let raf = 0;
-    let lastDetect = 0;
 
     const host = createHost((stream) => {
       const v = videoRef.current;
@@ -65,8 +73,8 @@ export default function DesktopReceiver() {
     }, setState);
     setHostId(host.hostId);
 
-    const loop = (t: number) => {
-      raf = requestAnimationFrame(loop);
+    const render = () => {
+      raf = requestAnimationFrame(render);
       const v = videoRef.current;
       const c = canvasRef.current;
       if (!v || !c || !v.videoWidth) return;
@@ -77,35 +85,52 @@ export default function DesktopReceiver() {
       const ctx = c.getContext('2d');
       if (!ctx) return;
       ctx.drawImage(v, 0, 0, c.width, c.height);
+      if (resultRef.current) drawOverlay(ctx, resultRef.current);
+    };
+    raf = requestAnimationFrame(render);
 
+    return () => {
+      cancelAnimationFrame(raf);
+      host.destroy();
+    };
+  }, []);
+
+  // Detection-Loop: laeuft als setTimeout-Chain, NICHT in rAF. So bleibt die
+  // Render-Loop fluessig und WebRTC kann zwischen den Detection-Laeufen atmen.
+  useEffect(() => {
+    let stopped = false;
+    const tick = () => {
+      if (stopped) return;
       const cv = cvRef.current;
-      if (cv && t - lastDetect > DETECT_INTERVAL_MS) {
-        lastDetect = t;
+      const v = videoRef.current;
+      const c = canvasRef.current;
+      if (cv && v && c && v.videoWidth) {
         try {
-          const id = ctx.getImageData(0, 0, c.width, c.height);
-          const src = cv.matFromImageData(id);
-          const r = detectBoard(cv, src, { workSize: 800 });
-          src.delete();
-          if (r) {
-            resultRef.current = r;
-            setMetrics({
-              conf: r.confidence,
-              rms: r.rmsPx,
-              center: scorePoint(r, r.bull[0], r.bull[1]),
-            });
+          const ctx = c.getContext('2d');
+          if (ctx) {
+            const id = ctx.getImageData(0, 0, c.width, c.height);
+            const src = cv.matFromImageData(id);
+            const r = detectBoard(cv, src, { workSize: 800 });
+            src.delete();
+            if (r) {
+              resultRef.current = r;
+              setMetrics({
+                conf: r.confidence,
+                rms: r.rmsPx,
+                center: scorePoint(r, r.bull[0], r.bull[1]),
+              });
+            }
           }
         } catch {
           /* einzelne Frame-Fehler ignorieren */
         }
       }
-
-      if (resultRef.current) drawOverlay(ctx, resultRef.current);
+      setTimeout(tick, DETECT_INTERVAL_MS);
     };
-    raf = requestAnimationFrame(loop);
-
+    const handle = setTimeout(tick, DETECT_INTERVAL_MS);
     return () => {
-      cancelAnimationFrame(raf);
-      host.destroy();
+      stopped = true;
+      clearTimeout(handle);
     };
   }, []);
 
@@ -153,6 +178,7 @@ export default function DesktopReceiver() {
             </div>
             <div className="mt-2 text-sm">
               OpenCV:{' '}
+              {cvStatus === 'idle' && <span className="text-gray-400">wartet auf Verbindung</span>}
               {cvStatus === 'loading' && <span className="text-yellow-400">lädt … (~10 MB)</span>}
               {cvStatus === 'ready' && <span className="text-green-400">bereit</span>}
               {cvStatus === 'error' && <span className="text-red-400">Fehler</span>}
