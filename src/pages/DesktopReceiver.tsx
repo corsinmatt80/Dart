@@ -59,8 +59,10 @@ export default function DesktopReceiver() {
     setCvRetry((n) => n + 1);
   };
 
-  // Verbindung + Render-Loop. Render zeichnet nur das Frame (schnell), damit
-  // das Live-Bild nicht durch teure Detection stockt.
+  // Verbindung + Overlay-Render-Loop. Das Video-Element ist jetzt direkt
+  // sichtbar (Browser-Compositor zeigt es auch waehrend der Main Thread durch
+  // OpenCV blockiert ist – sonst wirkt das Bild "weg"). Das Canvas liegt nur
+  // als Overlay darueber und zeichnet ausschliesslich die Detection-Ringe.
   useEffect(() => {
     let raf = 0;
 
@@ -84,7 +86,7 @@ export default function DesktopReceiver() {
       }
       const ctx = c.getContext('2d');
       if (!ctx) return;
-      ctx.drawImage(v, 0, 0, c.width, c.height);
+      ctx.clearRect(0, 0, c.width, c.height);
       if (resultRef.current) drawOverlay(ctx, resultRef.current);
     };
     raf = requestAnimationFrame(render);
@@ -95,31 +97,36 @@ export default function DesktopReceiver() {
     };
   }, []);
 
-  // Detection-Loop: laeuft als setTimeout-Chain, NICHT in rAF. So bleibt die
-  // Render-Loop fluessig und WebRTC kann zwischen den Detection-Laeufen atmen.
+  // Detection-Loop mit eigenem Offscreen-Canvas (damit das sichtbare Overlay-
+  // Canvas frei bleibt). setTimeout-Chain statt rAF, damit der Browser
+  // zwischen den Detection-Laeufen rendern und WebRTC-Frames decoden kann.
   useEffect(() => {
     let stopped = false;
+    const off = document.createElement('canvas');
+    const offCtx = off.getContext('2d', { willReadFrequently: true });
+
     const tick = () => {
       if (stopped) return;
       const cv = cvRef.current;
       const v = videoRef.current;
-      const c = canvasRef.current;
-      if (cv && v && c && v.videoWidth) {
+      if (cv && v && v.videoWidth && offCtx) {
+        if (off.width !== v.videoWidth) {
+          off.width = v.videoWidth;
+          off.height = v.videoHeight;
+        }
         try {
-          const ctx = c.getContext('2d');
-          if (ctx) {
-            const id = ctx.getImageData(0, 0, c.width, c.height);
-            const src = cv.matFromImageData(id);
-            const r = detectBoard(cv, src, { workSize: 800 });
-            src.delete();
-            if (r) {
-              resultRef.current = r;
-              setMetrics({
-                conf: r.confidence,
-                rms: r.rmsPx,
-                center: scorePoint(r, r.bull[0], r.bull[1]),
-              });
-            }
+          offCtx.drawImage(v, 0, 0, off.width, off.height);
+          const id = offCtx.getImageData(0, 0, off.width, off.height);
+          const src = cv.matFromImageData(id);
+          const r = detectBoard(cv, src, { workSize: 800 });
+          src.delete();
+          if (r) {
+            resultRef.current = r;
+            setMetrics({
+              conf: r.confidence,
+              rms: r.rmsPx,
+              center: scorePoint(r, r.bull[0], r.bull[1]),
+            });
           }
         } catch {
           /* einzelne Frame-Fehler ignorieren */
@@ -203,16 +210,22 @@ export default function DesktopReceiver() {
           {/* Video + Overlay */}
           <div className="rounded-lg border border-white/20 bg-black/40 p-3">
             <div className="relative">
-              {/* off-screen statt display:none, damit der Frame zuverlaessig dekodiert wird */}
+              {/* Video direkt sichtbar – damit es auch dann fluessig laeuft,
+                  wenn der Main Thread durch OpenCV blockiert ist. */}
               <video
                 ref={videoRef}
-                style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+                className="block w-full rounded bg-black"
                 playsInline
                 muted
+                autoPlay
               />
-              <canvas ref={canvasRef} className="w-full rounded bg-black" />
+              {/* Canvas liegt als reines Detection-Overlay darueber. */}
+              <canvas
+                ref={canvasRef}
+                className="pointer-events-none absolute inset-0 h-full w-full"
+              />
               {!connected && (
-                <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+                <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-gray-400">
                   Warte auf Kamerabild …
                 </div>
               )}
